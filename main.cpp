@@ -30,7 +30,7 @@ void pop(void* threadid)
 	if (vec.size() > 0)
 	{
 		long val = vec.back();
-		vec.pop_back(val);
+		vec.pop_back();
 		cout << "Popping "<< val << endl;
 	}
 }
