@@ -7,38 +7,30 @@ using namespace std;
 
 #define NUM_THREADS 5
 
-vector<int> vector;
+vector<long> vec;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void printVector()
+void* push(void* threadid)
 {
-    for(int i = 0; i < vector.size(); ++i)
-    {
-	cout << vector[i] << "\t" <<endl;
-    }
-}
-
-void push(void* threadid)
-{
-	int tid;
-	tid = (int)threadid;
+	long tid;
+	tid = (long)threadid;
 	pthread_mutex_lock(&mutex);
 	    vec.push_back(tid);
+	    cout << "pushing " << tid <<endl;
 	pthread_mutex_unlock(&mutex);
-	cout << "pushing " << tid  <<endl;
 }
 
-void pop(void* threadid)
+void* pop(void* threadid)
 {
-	if (vec.size() > 0)
+	if (!vec.empty())
 	{
 		pthread_mutex_lock(&mutex);
-		    int val = vec.back();
-		    int tid = (int)threadid;
+		    long val = vec.back();
+		    long tid = (long)threadid;
 		    vec.pop_back();
 		pthread_mutex_unlock(&mutex);
-		cout << "Popping "<< val << "by " << tid << endl;
+		cout << "popping "<< val << " by " << tid << endl;
 	}
 }
 
@@ -64,7 +56,6 @@ int main()
 	}
     }
     pthread_exit(NULL);
-    printVector();	
 
 }
 
