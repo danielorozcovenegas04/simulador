@@ -1,33 +1,63 @@
 #include <iostream>
 #include <cstdlib>
 #include <pthread.h>
+#include <vector>
 
 using namespace std;
 
 #define NUM_THREADS 5
 
-void* PrintHello(void* threadid)
+vector<long> vector;
+
+void printVector()
 {
-    long tid;
-    tid = (long)threadid;
-    std::cout << "Hello world! Thread ID, " << tid <<endl;
-    pthread_exit(NULL);
+    for(int i = 0; i < vector.size(); ++i)
+    {
+	cout << vector[i] << "\t" <<endl;
+    }
+}
+
+void push(void* threadid)
+{
+	long tid;
+	tid = (long)threadid;
+	vec.push_back(tid);
+	cout << "pushing " << tid  <<endl;
+}
+
+void pop(void* threadid)
+{
+	if (vec.size() > 0)
+	{
+		long val = vec.back();
+		vec.pop_back(val);
+		cout << "Popping "<< val << endl;
+	}
 }
 
 int main()
 {
+
     pthread_t threads[NUM_THREADS];
     int rc;
-    for(int i=0; i < NUM_THREADS; ++i)
+    for(int i = 0; i < NUM_THREADS; ++i)
     {
-        cout << "main() : creating thread, " << i <<endl;
-        rc = pthread_create(&threads[i], NULL, PrintHello, (void*)i);
-        if(rc)
-        {
-            cout << "Error: unable to create thread," << rc <<endl;
-            exit(-1);
-        }
+	if((i % 2) == 0)
+	{
+	    rc = pthread_create(&threads[i],NULL,push, (void*)i);
+	}
+	else
+	{
+	    rc = pthread_create(&threads[i],NULL,pop, (void*)i);
+	}
+	if(rc)
+	{
+	    cout << "Error: imposible crear el hilo" <<endl;
+	    exit(-1);
+	}
     }
     pthread_exit(NULL);
+    printVector();	
+
 }
 
