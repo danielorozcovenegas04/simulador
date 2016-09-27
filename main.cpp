@@ -9,6 +9,8 @@ using namespace std;
 
 vector<int> vector;
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void printVector()
 {
     for(int i = 0; i < vector.size(); ++i)
@@ -21,7 +23,9 @@ void push(void* threadid)
 {
 	int tid;
 	tid = (int)threadid;
-	vec.push_back(tid);
+	pthread_mutex_lock(&mutex);
+	    vec.push_back(tid);
+	pthread_mutex_unlock(&mutex);
 	cout << "pushing " << tid  <<endl;
 }
 
@@ -29,9 +33,11 @@ void pop(void* threadid)
 {
 	if (vec.size() > 0)
 	{
-		int val = vec.back();
-		int tid = (int)threadid;
-		vec.pop_back();
+		pthread_mutex_lock(&mutex);
+		    int val = vec.back();
+		    int tid = (int)threadid;
+		    vec.pop_back();
+		pthread_mutex_unlock(&mutex);
 		cout << "Popping "<< val << "by " << tid << endl;
 	}
 }
