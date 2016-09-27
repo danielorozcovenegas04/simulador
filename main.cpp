@@ -7,7 +7,7 @@ using namespace std;
 
 #define NUM_THREADS 5
 
-vector<long> vector;
+vector<int> vector;
 
 void printVector()
 {
@@ -19,8 +19,8 @@ void printVector()
 
 void push(void* threadid)
 {
-	long tid;
-	tid = (long)threadid;
+	int tid;
+	tid = (int)threadid;
 	vec.push_back(tid);
 	cout << "pushing " << tid  <<endl;
 }
@@ -29,9 +29,10 @@ void pop(void* threadid)
 {
 	if (vec.size() > 0)
 	{
-		long val = vec.back();
+		int val = vec.back();
+		int tid = (int)threadid;
 		vec.pop_back();
-		cout << "Popping "<< val << endl;
+		cout << "Popping "<< val << "by " << tid << endl;
 	}
 }
 
