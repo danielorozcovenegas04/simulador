@@ -12,6 +12,8 @@ vector<long> vec;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_barrier_t barrera;
 
+void* pop(void*);
+
 void* push(void* threadid)
 {
 	long tid;
