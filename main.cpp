@@ -10,6 +10,7 @@ using namespace std;
 vector<long> vec;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_barrier_t barrera;
 
 void* push(void* threadid)
 {
@@ -19,6 +20,8 @@ void* push(void* threadid)
 	    vec.push_back(tid);
 	    cout << "pushing " << tid <<endl;
 	pthread_mutex_unlock(&mutex);
+	pthread_barrier_wait(&barrera);
+	pop(threadid);
 }
 
 void* pop(void* threadid)
@@ -39,23 +42,18 @@ int main()
 
     pthread_t threads[NUM_THREADS];
     int rc;
+    pthread_barrier_init(&barrera,NULL,NUM_THREADS);
     for(int i = 0; i < NUM_THREADS; ++i)
     {
-	if((i % 2) == 0)
-	{
-	    rc = pthread_create(&threads[i],NULL,push, (void*)i);
-	}
-	else
-	{
-	    rc = pthread_create(&threads[i],NULL,pop, (void*)i);
-	}
-	if(rc)
-	{
-	    cout << "Error: imposible crear el hilo" <<endl;
-	    exit(-1);
-	}
+		rc = pthread_create(&threads[i],NULL,push, (void*)i);
+		if(rc)
+		{
+	    	cout << "Error: imposible crear el hilo" <<endl;
+	    	exit(-1);
+		}
     }
     pthread_exit(NULL);
+    pthread_barrier_destroy(&barrera);
 
 }
 
