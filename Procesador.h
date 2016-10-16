@@ -11,8 +11,8 @@ class Procesador
         virtual ~Procesador();
         void setRegsPC(int*);
         int* getRegsPC();
-        void setVecProgs(Procesador*);
-        Procesador* getVecProgs();
+        //void setVecProgs(Procesador*);
+        //Procesador* getVecProgs();
         void setCacheInst(int*);
         int* getCacheInst();
         void setCacheDat(int*);
@@ -33,11 +33,11 @@ class Procesador
     protected:
     private:
         int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
-        Procesador vecProcs[2];     //vector con las referencias a los otros procesadores
+        //Procesador vecProcs[2];     //vector con las referencias a los otros procesadores
         int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
         int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
                                     //dato en una direccion se interpreta internamente como un solo entero
-        int hililloTerminado;       //tiene un 0 si no ha terminado su ejecucion, y 1 si ya la termino
+        int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en la cola de hilillos, y un 2 si ya termino
 };
 
 #endif // PROCESADOR_H
