@@ -50,6 +50,7 @@ int* Procesador::getRegsPC()
     return regsPC;
 }
 
+/*
 void Procesador::setVecProgs(Procesador* p_vecProgs)
 {
     vecProcs = p_vecProgs;
@@ -59,6 +60,7 @@ Procesador* Procesador::getVecProgs()
 {
     return vecProcs;
 }
+*/
 
 void Procesador::setCacheInst(int* p_cacheInst)
 {
