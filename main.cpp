@@ -4,6 +4,7 @@
 #include <vector>
 #include "Procesador.h"
 #include <fstream>
+#include <time.h>
 
 using namespace std;
 
@@ -21,10 +22,16 @@ int memPDatos[TAM_MPDat];		//vector que representa la memoria principal comparti
 int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
 						
 int matrizHilillos[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
-								//y su estado ("sin comenzar" = 0, "en espera" = 1,"terminado" = 2), asi como el tiempo real que duro el hilillo 
-								//en terminar
+								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
+								
+time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
+											//hilillo se comenzo a ejecutar
 								
 int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
+int numElemento = 0;	//numero de elemento en la matriz de hilillos, considerando la matriz como vector contiguo
+
+time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
+time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_barrier_t barrera1;
@@ -66,9 +73,75 @@ void sacarContexto()
 	
 }
 
+//carga un hilillo en un hilo para ser ejecutado
 void cargarContexto()
 {
 	
+}
+
+void correr(int pNumNucleo)
+{
+	int estado = colaHilillos[35];		//el estado del hilillo actual
+	switch(pNumNucleo)
+	{
+		case 0:
+			Procesador procesador0 = new Procesador(pNumNucleo);
+			//inicia zona critica
+			pthread_mutex_lock(&mutex);
+			
+				if(numElemento < NUM_HILILLOS*37)
+				{
+					if(estado == 1)
+					{
+						colaHilillos[35] = 2;
+						procesador0->setRegsPC(colaHilillos);
+						time(&tiempoInicio);
+						tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+						numElemento += 37;
+						//si el proximo hilillo esta en espera se pone en la cola
+						if((colaHilillos + numElemento)[35] == 1)
+						{
+							colaHilillos += numElemento;
+						}
+					}
+				}
+				else
+				{
+					colaHilillos = 
+				}
+			pthread_mutex_unlock(&mutex);
+			//termina zona critica
+			break;
+		case 1:
+			Procesador procesador1 = new Procesador(pNumNucleo);
+			break;
+		case 2:
+			Procesador procesador2 = new Procesador(pNumNucleo);
+			break;
+	}
+}
+
+int crearNucleos()
+{
+	pthread_t threads[NUM_THREADS];
+    int rc;
+    pthread_barrier_init(&barrera1,NULL,NUM_THREADS);
+    pthread_barrier_init(&barrera2,NULL,NUM_THREADS);
+    for(int i = 0; i < NUM_THREADS; ++i)
+    {
+		rc = pthread_create(&threads[i],NULL,correr, (void*)i);
+		if(rc)
+		{
+	    	cout << "Error: imposible crear el hilo" <<endl;
+	    	exit(-1);
+		}
+    }
+    for(int j = 0; j < NUM_THREADS; j++)
+    {
+    	pthread_join(threads[j], NULL);
+    }
+    pthread_barrier_destroy(&barrera1);
+    pthread_barrier_destroy(&barrera2);
 }
 
 //determinar bloque en memoria principal de instrucciones según PC
@@ -132,7 +205,8 @@ void cargarHilillos()
 				if(primerInstr)
 				{
 					matrizHilillos[i][0] = 	PC;
-					colaHilillos = matrizHilillos[0];
+					matrizHilillos[i][36] = 1;
+					colaHilillos = &(matrizHilillos[0]);
 					primerInstr = false;
 				}
 				memPInst[PC - 384] = v1;
@@ -152,7 +226,7 @@ void cargarHilillos()
 					if(primerInstr)
 					{
 						matrizHilillos[i][0] = 	PC;
-						colaHilillos = matrizHilillos[0];
+						matrizHilillos[i][36] = 1;
 						primerInstr = false;
 					}
 					memPInst[PC - 384] = v1;
@@ -172,7 +246,7 @@ void cargarHilillos()
 						if(primerInstr)
 						{
 							matrizHilillos[i][0] = 	PC;
-							colaHilillos = matrizHilillos[0];
+							matrizHilillos[i][36] = 1;
 							primerInstr = false;
 						}
 						memPInst[PC - 384] = v1;
@@ -192,7 +266,7 @@ void cargarHilillos()
 							if(primerInstr)
 							{
 								matrizHilillos[i][0] = 	PC;
-								colaHilillos = matrizHilillos[0];
+								matrizHilillos[i][36] = 1;
 								primerInstr = false;
 							}
 							memPInst[PC - 384] = v1;
@@ -212,7 +286,7 @@ void cargarHilillos()
 								if(primerInstr)
 								{
 									matrizHilillos[i][0] = 	PC;
-									colaHilillos = matrizHilillos[0];
+									matrizHilillos[i][36] = 1;
 									primerInstr = false;
 								}
 								memPInst[PC - 384] = v1;
@@ -237,32 +311,29 @@ void imprimirMPInstr()
 	}
 }
 
+void imprimirMatrizHilillos()
+{
+	for(int x = 0; x < NUM_HILILLOS; ++x)
+	{
+		for(int y = 0; y < 37; ++y)
+		{
+			cout << matrizHilillos[x][y] << "  ";
+		}
+		/*
+		if((x % 37) == 0)
+		{
+			cout <<endl;
+		}
+		*/
+	}
+}
+
 int main()
 {
 	
 	cargarHilillos();
-	imprimirMPInstr();
-	
-    /*pthread_t threads[NUM_THREADS];
-    int rc;
-    pthread_barrier_init(&barrera1,NULL,NUM_THREADS);
-    pthread_barrier_init(&barrera2,NULL,NUM_THREADS);
-    for(int i = 0; i < NUM_THREADS; ++i)
-    {
-		rc = pthread_create(&threads[i],NULL,push, (void*)i);
-		if(rc)
-		{
-	    	cout << "Error: imposible crear el hilo" <<endl;
-	    	exit(-1);
-		}
-    }
-    for(int j = 0; j < NUM_THREADS; j++)
-    {
-    	pthread_join(threads[j], NULL);
-    }
-    pthread_barrier_destroy(&barrera1);
-    pthread_barrier_destroy(&barrera2);
-    */
+	//imprimirMPInstr();
+	//imprimirMatrizHilillos();
 
 }
 

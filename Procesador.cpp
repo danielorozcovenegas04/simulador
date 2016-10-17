@@ -1,8 +1,8 @@
 #include "Procesador.h"
 
-Procesador::Procesador(long p_threadId)
+Procesador::Procesador(int pID)
 {
-    id = p_threadId;
+    id = pID;
 }
 
 Procesador::~Procesador()
@@ -42,7 +42,10 @@ int Procesador::getCiclos()
 
 void Procesador::setRegsPC(int* p_vecRegsPC)
 {
-    regsPC = p_vecRegsPC;
+    for(int i = 0; i < 34; ++i)
+    {
+        regsPC[i] = p_vecRegsPC[i];
+    }
 }
 
 int* Procesador::getRegsPC()
