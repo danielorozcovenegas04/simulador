@@ -28,7 +28,6 @@ time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en t
 											//hilillo se comenzo a ejecutar
 								
 int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
-int numElemento = 0;	//numero de elemento en la matriz de hilillos, considerando la matriz como vector contiguo
 
 time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
 time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
@@ -79,35 +78,42 @@ void cargarContexto()
 	
 }
 
+//indica si aun existen hilillos en espera de ser ejecutados
+bool buscarHilillosEnEspera()
+{
+	bool sentinela = false; //vigila si ya se encontro un hilillo en espera
+	//mientras no se haya encontrado un hilillo en espera y la celda actual pertenezca a la matriz de hilillos
+	for(int i = 0; i < NUM_HILILLOS && !sentinela; ++i)
+	{
+		if(matrizHilillos[i][35] == 1)
+		{
+			sentinela = true;
+		}
+	}
+	return sentinela;
+}
+
 void correr(int pNumNucleo)
 {
-	int estado = colaHilillos[35];		//el estado del hilillo actual
+	int estado = colaHilillos;		//el estado del hilillo actual
 	switch(pNumNucleo)
 	{
 		case 0:
 			Procesador procesador0 = new Procesador(pNumNucleo);
 			//inicia zona critica
 			pthread_mutex_lock(&mutex);
-			
-				if(numElemento < NUM_HILILLOS*37)
+				if(estado == 1)
 				{
-					if(estado == 1)
+					colaHilillos[35] = 2;
+					procesador0->setRegsPC(colaHilillos);
+					time(&tiempoInicio);
+					tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+					numElemento += 37;
+					//si el proximo hilillo esta en espera se pone en la cola
+					if((colaHilillos + numElemento)[35] == 1)
 					{
-						colaHilillos[35] = 2;
-						procesador0->setRegsPC(colaHilillos);
-						time(&tiempoInicio);
-						tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
-						numElemento += 37;
-						//si el proximo hilillo esta en espera se pone en la cola
-						if((colaHilillos + numElemento)[35] == 1)
-						{
-							colaHilillos += numElemento;
-						}
+						colaHilillos += numElemento;
 					}
-				}
-				else
-				{
-					colaHilillos = 
 				}
 			pthread_mutex_unlock(&mutex);
 			//termina zona critica
