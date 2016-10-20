@@ -36,11 +36,11 @@ class Procesador
     private:
         long id;                    //identificador del nucleo
         int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
-        //Procesador vecProcs[2];     //vector con las referencias a los otros procesadores
-        int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
+        Procesador* vecProcs[2];     //vector con las referencias a los otros procesadores
+        int cacheInst[5][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
         int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
                                     //dato en una direccion se interpreta internamente como un solo entero
-        int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en la cola de hilillos, y un 2 si ya termino
+        int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en espera, un 2 si esta corriendo, y un 3 si ya termino
         int ciclosUsados;
 };
 
