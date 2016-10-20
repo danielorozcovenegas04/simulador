@@ -14,6 +14,8 @@ using namespace std;
 						//y cada palabra tiene 4 enteros
 #define TAM_MPDat 96	//son 96 celdas pues son 24 bloques y a cada bloque le caben 4 datos, aunque se simula que cada dato son 4 bytes, 
 						//al usar enteros solo se necesita un entero para cada dato
+						
+#define QUANTUM 40;
 
 vector<long> vec;		//vector de prueba
 
@@ -73,9 +75,32 @@ void sacarContexto()
 }
 
 //carga un hilillo en un hilo para ser ejecutado
-void cargarContexto()
+void cargarContexto(int pNumNucleo)
 {
-	
+	switch(pNumNucleo)
+	{
+		case 0:
+			procesador0.setId(colaHilillos[36]);
+			procesador0.setQuantum(QUANTUM);
+			procesador0.setEstadoHilillo(colaHilillos[35]);
+			procesador0.setCiclos(colaHilillos[34]);
+			procesador0.setRegsPC(colaHilillos);
+			break;
+		case 1:
+			procesador1.setId(colaHilillos[36]);
+			procesador1.setQuantum(QUANTUM);
+			procesador1.setEstadoHilillo(colaHilillos[35]);
+			procesador1.setCiclos(colaHilillos[34]);
+			procesador1.setRegsPC(colaHilillos);
+			break;
+		case 2:
+			procesador2.setId(colaHilillos[36]);
+			procesador2.setQuantum(QUANTUM);
+			procesador2.setEstadoHilillo(colaHilillos[35]);
+			procesador2.setCiclos(colaHilillos[34]);
+			procesador2.setRegsPC(colaHilillos);
+			break;
+	}
 }
 
 //indica si aun existen hilillos en espera de ser ejecutados
@@ -99,6 +124,19 @@ void correr(int pNumNucleo)
 	{
 		case 0:
 			Procesador procesador0 = new Procesador(pNumNucleo);
+			break;
+		case 1:
+			Procesador procesador1 = new Procesador(pNumNucleo);
+			break;
+		case 2:
+			Procesador procesador2 = new Procesador(pNumNucleo);
+			break;
+	}
+	pthread_barrier_wait(&barrera1);
+	switch(pNumNucleo)
+	{
+		case 0:
+			procesador0.setVecProcs(&procesador1, &procesador2);
 			//el hilo correra hasta que no hayan mas hilillos en espera
 			while(*colaHilillos != -1)
 			{
@@ -112,23 +150,18 @@ void correr(int pNumNucleo)
 							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
 						}
 						colaHilillos[35] = 2;
-						procesador0->setRegsPC(colaHilillos);
-						numElemento += 37;
-						//si el proximo hilillo esta en espera se pone en la cola
-						if((colaHilillos + numElemento)[35] == 1)
-						{
-							colaHilillos += numElemento;
-						}
+						cargarContexto(pNumNucleo);
 					}
 				pthread_mutex_unlock(&mutex);
 				//termina zona critica
+				procesador0.correrInstruccion(procesador0.obtenerInstruccion());
 			}
 			break;
 		case 1:
-			Procesador procesador1 = new Procesador(pNumNucleo);
+			
 			break;
 		case 2:
-			Procesador procesador2 = new Procesador(pNumNucleo);
+			
 			break;
 	}
 }
@@ -157,7 +190,7 @@ int crearNucleos()
 }
 
 //determinar bloque en memoria principal de instrucciones según PC
-int bloqEnMPInstr(int pPC)
+int buscarBloqEnMPInstr(int pPC)
 {
 	int numBloque;
 	//verifica que la dirección de memoria sea valida para la memoria principal compartida de instrucciones
@@ -173,7 +206,7 @@ int bloqEnMPInstr(int pPC)
 }
 
 //determinar palabra en bloque de memoria principal de instrucciones según PC
-int palEnBloqEnMPInstr(int pPC)
+int buscarPalEnBloqEnMPInstr(int pPC)
 {
 	int numPalabra;
 	//verifica que la dirección de memoria sea valida para la memoria principal compartida de instrucciones
