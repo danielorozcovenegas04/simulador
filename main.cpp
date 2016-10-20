@@ -95,28 +95,34 @@ bool buscarHilillosEnEspera()
 
 void correr(int pNumNucleo)
 {
-	int estado = colaHilillos;		//el estado del hilillo actual
 	switch(pNumNucleo)
 	{
 		case 0:
 			Procesador procesador0 = new Procesador(pNumNucleo);
-			//inicia zona critica
-			pthread_mutex_lock(&mutex);
-				if(estado == 1)
-				{
-					colaHilillos[35] = 2;
-					procesador0->setRegsPC(colaHilillos);
-					time(&tiempoInicio);
-					tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
-					numElemento += 37;
-					//si el proximo hilillo esta en espera se pone en la cola
-					if((colaHilillos + numElemento)[35] == 1)
+			//el hilo correra hasta que no hayan mas hilillos en espera
+			while(*colaHilillos != -1)
+			{
+				//inicia zona critica
+				pthread_mutex_lock(&mutex);
+					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
 					{
-						colaHilillos += numElemento;
+						if(colaHilillos[35] == 0)
+						{
+							time(&tiempoInicio);
+							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+						}
+						colaHilillos[35] = 2;
+						procesador0->setRegsPC(colaHilillos);
+						numElemento += 37;
+						//si el proximo hilillo esta en espera se pone en la cola
+						if((colaHilillos + numElemento)[35] == 1)
+						{
+							colaHilillos += numElemento;
+						}
 					}
-				}
-			pthread_mutex_unlock(&mutex);
-			//termina zona critica
+				pthread_mutex_unlock(&mutex);
+				//termina zona critica
+			}
 			break;
 		case 1:
 			Procesador procesador1 = new Procesador(pNumNucleo);
@@ -211,7 +217,7 @@ void cargarHilillos()
 				if(primerInstr)
 				{
 					matrizHilillos[i][0] = 	PC;
-					matrizHilillos[i][36] = 1;
+					matrizHilillos[i][35] = 0;
 					colaHilillos = &(matrizHilillos[0]);
 					primerInstr = false;
 				}
@@ -232,7 +238,7 @@ void cargarHilillos()
 					if(primerInstr)
 					{
 						matrizHilillos[i][0] = 	PC;
-						matrizHilillos[i][36] = 1;
+						matrizHilillos[i][35] = 0;
 						primerInstr = false;
 					}
 					memPInst[PC - 384] = v1;
@@ -252,7 +258,7 @@ void cargarHilillos()
 						if(primerInstr)
 						{
 							matrizHilillos[i][0] = 	PC;
-							matrizHilillos[i][36] = 1;
+							matrizHilillos[i][35] = 0;
 							primerInstr = false;
 						}
 						memPInst[PC - 384] = v1;
@@ -272,7 +278,7 @@ void cargarHilillos()
 							if(primerInstr)
 							{
 								matrizHilillos[i][0] = 	PC;
-								matrizHilillos[i][36] = 1;
+								matrizHilillos[i][35] = 0;
 								primerInstr = false;
 							}
 							memPInst[PC - 384] = v1;
@@ -292,7 +298,7 @@ void cargarHilillos()
 								if(primerInstr)
 								{
 									matrizHilillos[i][0] = 	PC;
-									matrizHilillos[i][36] = 1;
+									matrizHilillos[i][35] = 0;
 									primerInstr = false;
 								}
 								memPInst[PC - 384] = v1;
