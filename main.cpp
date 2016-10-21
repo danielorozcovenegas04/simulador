@@ -71,7 +71,76 @@ void* pop(void* threadid)
 
 void sacarContexto()
 {
-	
+	int* regsPCTemp;
+	switch(pNumNucleo)
+	{
+		case 0:
+			regsPCTemp = procesador0.getRegsPC();
+			for(int j = 0; j < NUM_HILILLOS; ++j)
+			{
+				if(procesador0.getId() == matrizHilillos[j][36])
+				{
+					matrizHilillos[j][34] += procesador0.getCiclos();
+					if(procesador0.getEstadoHilillo() != 3)
+					{
+						matrizHilillos[j][35] = 1;
+					}
+					else
+					{
+						matrizHilillos[j][35] = 3;
+					}
+					for(int f = 0; f < 34; ++f)
+					{
+						matrizHilillos[j][f] = regsPCTemp[f];
+					}
+				}
+			}
+			break;
+		case 1:
+			regsPCTemp = procesador1.getRegsPC();
+			for(int j = 0; j < NUM_HILILLOS; ++j)
+			{
+				if(procesador1.getId() == matrizHilillos[j][36])
+				{
+					matrizHilillos[j][34] += procesador1.getCiclos();
+					if(procesador1.getEstadoHilillo() != 3)
+					{
+						matrizHilillos[j][35] = 1;
+					}
+					else
+					{
+						matrizHilillos[j][35] = 3;
+					}
+					for(int f = 0; f < 34; ++f)
+					{
+						matrizHilillos[j][f] = regsPCTemp[f];
+					}
+				}
+			}
+			break;
+		case 2:
+			regsPCTemp = procesador2.getRegsPC();
+			for(int j = 0; j < NUM_HILILLOS; ++j)
+			{
+				if(procesador0.getId() == matrizHilillos[j][36])
+				{
+					matrizHilillos[j][34] += procesador2.getCiclos();
+					if(procesador2.getEstadoHilillo() != 3)
+					{
+						matrizHilillos[j][35] = 1;
+					}
+					else
+					{
+						matrizHilillos[j][35] = 3;
+					}
+					for(int f = 0; f < 34; ++f)
+					{
+						matrizHilillos[j][f] = regsPCTemp[f];
+					}
+				}
+			}
+			break;
+	}
 }
 
 //carga un hilillo en un hilo para ser ejecutado
@@ -120,6 +189,9 @@ bool buscarHilillosEnEspera()
 
 void correr(int pNumNucleo)
 {
+	int indiceHililloActual;
+	int it;
+	bool proximoHilo = false;
 	switch(pNumNucleo)
 	{
 		case 0:
@@ -151,10 +223,39 @@ void correr(int pNumNucleo)
 						}
 						colaHilillos[35] = 2;
 						cargarContexto(pNumNucleo);
+						indiceHililloActual = colaHilillos[36];
+						it = indiceHililloActual + 1;
+						while((it != indiceHililloActual) && !proximoHilo)
+						{
+							if(it >= NUM_HILILLOS)
+							{
+								it = 0;
+							}
+							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							{
+								colaHilillos = &(matrizHilillos[it]);
+								proximoHilo = true;
+							}
+							else
+							{
+								++it;
+							}
+						}
+						if((it == indiceHililloActual) && !proximoHilo)
+						{
+							*colaHilillos = -1;
+						}
 					}
 				pthread_mutex_unlock(&mutex);
 				//termina zona critica
-				procesador0.correrInstruccion(procesador0.obtenerInstruccion());
+				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
+				{
+					procesador0.correrInstruccion(procesador0.obtenerInstruccion());
+				}
+				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
+				pthread_mutex_lock(&mutex);
+					sacarContexto();
+				pthread_mutex_unlock(&mutex);
 			}
 			break;
 		case 1:
