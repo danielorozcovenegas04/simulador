@@ -130,6 +130,7 @@ void resolverFalloDeCacheInstr()
 
 void resolverFalloDeCacheDat(int pNumBloqEnMP)
 {
+    int numBloEnCache = (pNumBloqEnMP % 4);
     
 }
 
@@ -406,5 +407,5 @@ void Procesador::JR(int RX)
 void Procesador::FIN() 
 {
     PC += 4;
-    estadoHilillo = 1;
+    estadoHilillo = 3;
 }
