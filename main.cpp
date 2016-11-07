@@ -1,8 +1,6 @@
 #include <iostream>
 #include <cstdlib>
 #include <pthread.h>
-#include <vector>
-#include "Procesador.h"
 #include <fstream>
 #include <time.h>
 
@@ -17,7 +15,497 @@ using namespace std;
 						
 #define QUANTUM 40;
 
-vector<long> vec;		//vector de prueba
+
+//inicio clase Procesador
+class Procesador
+{
+	private:
+		long id;                    //identificador del nucleo
+	    int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
+	    Procesador* vecProcs[2];     //vector con las referencias a los otros procesadores
+	    int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
+	    int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
+	                                //dato en una direccion se interpreta internamente como un solo entero
+	    int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en espera, un 2 si esta corriendo, y un 3 si ya termino
+	    int ciclosUsados;	
+		pthread_mutex_t mutexCacheLocal;
+		pthread_mutex_t mutexCacheRemota;
+	
+	public:
+		Procesador(int pID)
+		{
+		    id = pID;
+		}
+		
+		~Procesador()
+		{
+		    
+		}
+		
+		void setId(long p_Id)
+		{
+		    id = p_Id;
+		}
+		
+		long getId()
+		{
+		    return id;
+		}
+		
+		void setQuantum(int p_quantum)
+		{
+		    quantum = p_quantum;
+		}
+		
+		int getQuantum()
+		{
+		    return quantum;
+		}   
+		
+		void setCiclos(int p_ciclos)
+		{
+		    ciclos = p_ciclos;
+		}
+		
+		int getCiclos()
+		{
+		    return ciclos;
+		}
+		
+		void setRegsPC(int* p_vecRegsPC)
+		{
+		    for(int i = 0; i < 34; ++i)
+		    {
+		        regsPC[i] = p_vecRegsPC[i];
+		    }
+		}
+		
+		int* getRegsPC()
+		{
+		    return regsPC;
+		}
+		
+		void setCacheInst(int* p_cacheInst)
+		{
+		    cacheInst = p_cacheInst;
+		}
+		
+		int* getCacheInst()
+		{
+		    return cacheInst;
+		}
+		
+		void setCacheDat(int* p_cacheDat)
+		{
+		    cacheDat = p_cacheDat;
+		}
+		
+		int* getCacheDat()
+		{
+		    return cacheDat;
+		}
+		
+		void setEstadoHilillo(int p_estado)
+		{
+		    estadoHilillo = p_estado;
+		}
+		
+		int getEstadoHilillo()
+		{
+		    return estadoHilillo;
+		}
+		
+		pthread_mutex_t* getMutexCache()
+		{
+			return &mutexCacheLocal;
+		}
+		
+		void resolverFalloDeCacheInstr(pthread_mutex_t* pBus, Procesador* pVecProcs)
+		{
+		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnCache = (numBloqueEnMP %  4);
+		    int direccionEnArregloMPInstr = (numBloqueEnMP * 16) - 384;
+		    bool sentinela = false;
+		    while(!sentinela)
+		    {
+			    if(pthread_mutex_trylock(&mutexCacheLocal) == 0)
+			    {
+					//si tengo el bus
+					if(pthread_mutex_trylock(pBus) == 0)
+					{
+						for(int indice = 0; indice < NUM_THREADS; ++indice)
+						{
+							if(indice != this.id)
+							{
+								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCache()) == 0)
+								{
+								    //si el bloque esta en la caché
+								    if(((&(pVecProcs[indice]))->getCacheInst())[4][numBloqueEnCache][0] == numBloqueEnMP)
+								    {
+								    	((&(pVecProcs[indice]))->getCacheInst())[5][numBloqueEnCache][0] = 0;  //se invalida   						
+								    }
+								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCache()));		//se libera cache remota
+								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); ++i)
+								    {
+								        for(int j = 0; j < 4; ++j)
+								        {
+					            			cacheInst[i / 4][numBloqueEnCache][j] = memPInst[i];
+								        }
+								    }
+								    cacheInst[4][numBloqueEnCache][0] = numBloqueEnMP;
+									cacheInst[5][numBloqueEnCache][0] = 1;
+									for(int d = 0; d < 28; ++d)
+									{ 
+										pthread_barrier_wait(&barrera1);
+									}
+									sentinela = true;
+								}
+					       		else
+					       		{
+					       			pthread_mutex_unlock(pBus);
+					       			break;
+					       		}
+					       	}
+				       	}
+				       	pthread_mutex_unlock(pBus);
+					}
+					pthread_mutex_unlock(&mutexCacheLocal);
+			    }
+		    }
+		}
+		
+		void resolverFalloDeCacheDat(int pNumBloqEnMP)
+		{
+		    int numBloEnCache = (pNumBloqEnMP % 4);
+		    
+		}
+		
+		//busca el bloque en la cache de instrucciones y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
+		int buscarBloqEnCacheInstr()
+		{
+		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
+		    //si el bloque no esta en la caché
+		    if(cacheInst[4][numBloqueEnCache] != numBloqueEnMP)
+		    {
+		        numBloqueEnCache = -1;						
+		    }
+		    return numBloqueEnCache;
+		}
+		
+		//busca el bloque en la cache de datos y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
+		int buscarBloqEnCacheDat()
+		{
+		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
+		    //si el bloque no esta en la caché
+		    if(cacheDat[4][numBloqueEnCache] != numBloqueEnMP)
+		    {
+		        numBloqueEnCache = -1;
+		    }
+		    return numBloqueEnCache;
+		}
+		
+		//busca la palabra en el bloque de cache de instrucciones y retorna el numero de palabra, retorna -1 en caso de error
+		int buscarPalEnCacheInstr()
+		{
+		    int numPal = -1;
+		    if(buscarBloqEnCacheInstr() != -1)
+		    {
+		        numPal = ((this.regsPC[0] % 16) /  4);
+		    }
+		    return numPal;
+		    
+		}
+		
+		//busca la palabra en el bloque de cache de datos y retorna el numero de palabra, retorna -1 en caso de error
+		int buscarPalEnCacheDat()
+		{
+		    int numPal = -1;
+		    if(buscarBloqEnCacheDat() != -1)
+		    {
+		        numPal = ((this.regsPC[0] % 16) /  4);
+		    }
+		    return numPal;
+		    
+		}
+		
+		int* obtenerInstruccionDeCache()
+		{
+			int* instruccion;		
+			int numeroBloq = buscarBloqEnCacheInstr();
+			int numeroPal;
+			if(numeroBloq == -1)
+			{
+			    *instruccion = -1;      //retornara un -1 si la instrucción no se encuentra en la cache de instrucciones
+			}
+			else
+			{
+			    numeroPal = buscarPalEnCacheInstr();
+			    instruccion = &(cacheInst[numeroPal][numeroBloq]);
+			}
+			return instruccion;
+		}
+		
+		int obtenerDatoDeCache(int pBloqEnMP, int pNumPal)
+		{
+		    int dato = -1;          //devolvera un -1 si el bloque no esta en la cache o si esta invalido
+		    int numBloqEnCache = (pNumBloqEnMP % 4);
+		    if((cacheDat[5][numBloqEnCache] == 1) && (cacheDat[4][numBloqEnCache] == pNumBloqEnMP))
+		    {
+		        dato = cacheDat[pNumPal][numBloqEnCache];
+		    }
+		    return dato;
+		}
+		
+		//obtiene la instrucción que indique el PC
+		int* obtenerInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs)
+		{
+			int instruccion[4];		//contendra la instrucción que se necesita
+			instruccion = obtenerInstruccionDeCache();
+			while(*instruccion == -1)
+			{
+			    resolverFalloDeCacheInstr(pBus, pVecProcs);
+			    instruccion = obtenerInstruccionDeCache();
+			}
+			return instruccion;
+		}
+		
+		//obtiene el dato
+		int obtenerDato(int pDireccion, pthread_mutex_t* pBus, Procesador* pVecProcs)
+		{
+		    int numeroBloqEnMP = (pDireccion / 16);
+		    int numeroPal = ((pDireccion % 16) / 4);
+		    dato = obtenerDatoDeCache(numeroBloqEnMP, numeroPal);
+		    while(dato == -1)
+			{
+			    resolverFalloDeCacheDat(numeroBloqEnMP);
+			    dato = obtenerDatoDeCache(numeroBloqEnMP, numeroPal);
+			}
+			return dato;
+		}
+		
+		/**
+		* Este metodo se encarga de comprobar que instrucción se va a correr, y
+		* llamar al metodo correspondiente
+		*/
+		void correrInstruccion(int* palabra) 
+		{
+		    int v1 = palabra[0];
+		    int v2 = palabra[1];
+		    int v3 = palabra[2];
+		    int v4 = palabra[3];
+		
+		    switch (v1) 
+		    {
+		        case 8:
+		            DADDI(v2, v3, v4);
+		            break;
+		        case 32:
+		            DADD(v2, v3, v4);
+		            break;
+		        case 34:
+		            DSUB(v2, v3, v4);
+		            break;
+		        case 12:
+		            DMUL(v2, v3, v4);
+		            break;
+		        case 14:
+		            DDIV(v2, v3, v4);
+		            break;
+		        case 4:
+		            BEQZ(v2, v4);
+		            break;
+		        case 5:
+		            BNEZ(v2, v4);
+		            break;
+		        case 3:
+		            JAL(v4);
+		            break;
+		        case 2:
+		            JR(v2);
+		            break;
+		        case 35:
+		            LW(v2, v3, v4);
+		            break;
+		        case 43:
+		        	SW(v2, v3, v4);
+		        	break;
+		        case 63:
+		            FIN();
+		            break;
+		    }
+		}
+		
+		bool esRegistroValido(int RX) 
+		{
+		    bool validez = false;
+		    if (RX >= 0 && RX < 32) {
+		        validez = true;
+		    }
+		    return validez;
+		}
+		
+		bool esRegDestinoValido(int RX)
+		{
+		    bool validez = false;
+		    if((RX > 0) && (RX < 32))
+		    {
+		        validez = true;
+		    }
+		    return validez;
+		}
+		
+		/**Se encarga de sumar el valor del registro RY con un inmediato n, y 
+		* guardarlo en el registro RX
+		*/
+		void DADDI(int RY, int RX, int n)
+		{
+		    //Si el registro RX es el destino, o si uno de los registros no es
+		    //valido hay error
+		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
+		    {
+		        Registro[RX] = Registro[RY] + n;    //Realiza el DADDI
+		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    }
+		}
+		    
+		/**Se encarga de sumar el valor del registro RY con el valor el registro
+		* RZ, y guardarlo en el registro RX
+		*/
+		void DADD(int RY, int RZ, int RX)
+		{
+		    //Si el registro RX es el destino, o si uno de los registros no es
+		    //valido hay error
+		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
+		    {
+		        Registro[RX] = Registro[RY] + Registro[RZ];    //Realiza el DADDI
+		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    }
+		}
+		    
+		/*
+		* Se encarga de restarle al registro RY el valor del registro RZ y 
+		* almacenarlo en RX
+		*/
+		void DSUB(int RY, int RZ, int RX)
+		{
+		    //Si el registro RX es el destino, o si uno de los registros no es
+		    //valido hay error
+		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
+		    {
+		        Registro[RX] = Registro[RY] - Registro[RZ];    //Realiza el DADDI
+		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    }
+		}
+		    
+		/*
+		* Se encarga de multiplicar los registros RY y RZ y guardar el producto en RZ
+		*/
+		void DMUL(int RY, int RZ, int RX)
+		{
+		    //Si el registro RX es el destino, o si uno de los registros no es
+		    //valido hay error
+		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
+		    {
+		        Registro[RX] = Registro[RY] * Registro[RZ];    //Realiza el DADDI
+		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    }
+		}
+		    
+		/*
+		* Se encarga de dividir los registros RY y RZ y guardar el producto en RX
+		*/
+		void DDIV(int RY, int RZ, int RX)
+		{
+		    //Si el registro RX es el destino, o si uno de los registros no es
+		    //valido hay error
+		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
+		    {
+		        Registro[RX] = Registro[RY] / Registro[RZ];    //Realiza el DADDI
+		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    }
+		}
+		
+		/*
+		* Si el valor en el registro RX es un cero, entonces el PC se mueve n instrucciones
+		*/
+		void BEQZ(int RX, int n) 
+		{
+		    if(esRegistroValido(RX))
+		    {
+		        PC += 4;
+		        if(Registro[RX] == 0){
+		            PC = PC + 4*n;
+		        }
+		    }
+		}
+		
+		/*
+		* Si el valor en el registro RX es distinto de cero, entonces el PC se mueve n instrucciones
+		*/
+		void BNEZ(int RX, int n) 
+		{
+		    if(esRegistroValido(RX))
+		    {
+		        PC += 4;
+		        if(Registro[RX] != 0){
+		            PC = PC + 4*n;
+		        }
+		    }
+		}
+		
+		/*
+		* Carga un dato de cache de datos al registro indicado
+		*/
+		int LW(int RY, int RX, int n)
+		{
+			//pedir cache datos local
+			pthread_mutex_lock(&mutexCacheLocal);
+				buscarB
+			pthread_mutex_unlock(&mutexCacheLocal);
+		}
+		
+		/*
+		* carga un dato del registro indicado a memoria en la dirección indicada
+		*/
+		int SW(int RY, int RX, int n)
+		{
+			
+		}
+		
+		/*
+		* Guarda el PC actual y luego lo mueve n direcciones
+		*/
+		void JAL(int n) 
+		{
+		    PC += 4;
+		    Registro[31] = PC;
+		    PC += n;
+		}
+		
+		/*
+		* El PC adquiere el valor presente en el registro RX
+		*/
+		void JR(int RX) 
+		{
+		    if(esRegistroValido(RX))
+		    {
+		        PC = Registro[RX];
+		    }
+		}
+		
+		/*
+		* Pone el estado del hilillo actual como "terminado" en la matriz de hilillos
+		*/
+		void FIN() 
+		{
+		    PC += 4;
+		    estadoHilillo = 3;
+		}
+	
+}
+//fin clase Procesador
 
 int memPDatos[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
 						
@@ -34,45 +522,18 @@ int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a a
 time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
 time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
 
+Procesador vecProcs[NUM_THREADS];	//vector de procesadores o hilos
+pthread_t threads[NUM_THREADS];		//identificadores de los hilos
+
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t bus = PTHREAD_MUTEX_INITIALIZER;
 pthread_barrier_t barrera1;
 pthread_barrier_t barrera2;
-
-void* pop(void*);
-
-void* push(void* threadid)
-{
-	long tid;
-	tid = (long)threadid;
-	pthread_mutex_lock(&mutex);
-	    vec.push_back(tid);
-	    cout << "pushing " << tid <<endl;
-	pthread_mutex_unlock(&mutex);
-	cout << "Esperando en barrera1\n" <<endl;
-	pthread_barrier_wait(&barrera1);
-	pop(threadid);
-	cout << "Esperando en barrera2\n" <<endl;
-	pthread_barrier_wait(&barrera2);
-	pthread_exit(NULL);
-}
-
-void* pop(void* threadid)
-{
-	if (!vec.empty())
-	{
-		pthread_mutex_lock(&mutex);
-		    long val = vec.back();
-		    long tid = (long)threadid;
-		    vec.pop_back();
-		pthread_mutex_unlock(&mutex);
-		cout << "popping "<< val << " by " << tid << endl;
-	}
-}
 
 void sacarContexto()
 {
 	int* regsPCTemp;
-	switch(pNumNucleo)
+	switch(numNucleo)
 	{
 		case 0:
 			regsPCTemp = procesador0.getRegsPC();
@@ -144,9 +605,9 @@ void sacarContexto()
 }
 
 //carga un hilillo en un hilo para ser ejecutado
-void cargarContexto(int pNumNucleo)
+void cargarContexto(int numNucleo)
 {
-	switch(pNumNucleo)
+	switch(numNucleo)
 	{
 		case 0:
 			procesador0.setId(colaHilillos[36]);
@@ -187,28 +648,48 @@ bool buscarHilillosEnEspera()
 	return sentinela;
 }
 
-void correr(int pNumNucleo)
+void correr()
 {
 	int indiceHililloActual;
 	int it;
 	bool proximoHilo = false;
-	switch(pNumNucleo)
+	//encontrar el numero de procesador actual
+	int numNucleo;
+	for(int i = 0; i < NUM_THREADS; ++i)
+	{
+		if( 0 != pthread_equal(pthread_self(), threads[i]))
+		{
+			numNucleo = i;
+			break;
+		}
+	}
+	
+	switch(numNucleo)
 	{
 		case 0:
-			Procesador procesador0 = new Procesador(pNumNucleo);
+			Procesador procesador0 = new Procesador(numNucleo);
+			pthread_mutex_lock(&mutex);
+				vecProcs[numNucleo] = &procesador0;
+			pthread_mutex_unlock(&mutex);
 			break;
 		case 1:
-			Procesador procesador1 = new Procesador(pNumNucleo);
+			Procesador procesador1 = new Procesador(numNucleo);
+			pthread_mutex_lock(&mutex);
+				vecProcs[numNucleo] = &procesador1;
+			pthread_mutex_unlock(&mutex);
 			break;
 		case 2:
-			Procesador procesador2 = new Procesador(pNumNucleo);
+			Procesador procesador2 = new Procesador(numNucleo);
+			pthread_mutex_lock(&mutex);
+				vecProcs[numNucleo] = &procesador2;
+			pthread_mutex_unlock(&mutex);
 			break;
 	}
+	
 	pthread_barrier_wait(&barrera1);
-	switch(pNumNucleo)
+	switch(numNucleo)
 	{
 		case 0:
-			procesador0.setVecProcs(&procesador1, &procesador2);
 			//el hilo correra hasta que no hayan mas hilillos en espera
 			while(*colaHilillos != -1)
 			{
@@ -222,7 +703,7 @@ void correr(int pNumNucleo)
 							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
 						}
 						colaHilillos[35] = 2;
-						cargarContexto(pNumNucleo);
+						cargarContexto(numNucleo);
 						indiceHililloActual = colaHilillos[36];
 						it = indiceHililloActual + 1;
 						while((it != indiceHililloActual) && !proximoHilo)
@@ -250,7 +731,7 @@ void correr(int pNumNucleo)
 				//termina zona critica
 				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
 				{
-					procesador0.correrInstruccion(procesador0.obtenerInstruccion());
+					procesador0.correrInstruccion(procesador0.obtenerInstruccion(&bus, vecProcs));
 				}
 				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
 				pthread_mutex_lock(&mutex);
@@ -269,13 +750,12 @@ void correr(int pNumNucleo)
 
 int crearNucleos()
 {
-	pthread_t threads[NUM_THREADS];
     int rc;
     pthread_barrier_init(&barrera1,NULL,NUM_THREADS);
     pthread_barrier_init(&barrera2,NULL,NUM_THREADS);
     for(int i = 0; i < NUM_THREADS; ++i)
     {
-		rc = pthread_create(&threads[i],NULL,correr, (void*)i);
+		rc = pthread_create(&threads[i],NULL,correr, NULL);
 		if(rc)
 		{
 	    	cout << "Error: imposible crear el hilo" <<endl;
