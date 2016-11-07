@@ -28,8 +28,8 @@ class Procesador
 	                                //dato en una direccion se interpreta internamente como un solo entero
 	    int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en espera, un 2 si esta corriendo, y un 3 si ya termino
 	    int ciclosUsados;	
-		pthread_mutex_t mutexCacheLocal;
-		pthread_mutex_t mutexCacheRemota;
+		pthread_mutex_t mutexCacheInstLocal;
+		pthread_mutex_t mutexCacheDatLocal;
 	
 	public:
 		Procesador(int pID)
@@ -115,9 +115,14 @@ class Procesador
 		    return estadoHilillo;
 		}
 		
-		pthread_mutex_t* getMutexCache()
+		pthread_mutex_t* getMutexCacheInst()
 		{
-			return &mutexCacheLocal;
+			return &mutexCacheInstLocal;
+		}
+		
+		pthread_mutex_t* getMutexCacheDat()
+		{
+			return &mutexCacheDatLocal;
 		}
 		
 		void resolverFalloDeCacheInstr(pthread_mutex_t* pBus, Procesador* pVecProcs)
@@ -128,7 +133,7 @@ class Procesador
 		    bool sentinela = false;
 		    while(!sentinela)
 		    {
-			    if(pthread_mutex_trylock(&mutexCacheLocal) == 0)
+			    if(pthread_mutex_trylock(&mutexCacheInstLocal) == 0)
 			    {
 					//si tengo el bus
 					if(pthread_mutex_trylock(pBus) == 0)
@@ -137,14 +142,14 @@ class Procesador
 						{
 							if(indice != this.id)
 							{
-								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCache()) == 0)
+								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCacheInst()) == 0)
 								{
 								    //si el bloque esta en la caché
 								    if(((&(pVecProcs[indice]))->getCacheInst())[4][numBloqueEnCache][0] == numBloqueEnMP)
 								    {
 								    	((&(pVecProcs[indice]))->getCacheInst())[5][numBloqueEnCache][0] = 0;  //se invalida   						
 								    }
-								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCache()));		//se libera cache remota
+								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCacheInst()));		//se libera cache remota
 								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); ++i)
 								    {
 								        for(int j = 0; j < 4; ++j)
@@ -169,15 +174,60 @@ class Procesador
 				       	}
 				       	pthread_mutex_unlock(pBus);
 					}
-					pthread_mutex_unlock(&mutexCacheLocal);
+					pthread_mutex_unlock(&mutexCacheInstLocal);
 			    }
 		    }
 		}
 		
-		void resolverFalloDeCacheDat(int pNumBloqEnMP)
+		void resolverFalloDeCacheDat(int pNumBloqEnMP, pthread_mutex_t* pBus, Procesador* pVecProcs)
 		{
-		    int numBloEnCache = (pNumBloqEnMP % 4);
-		    
+		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnCache = (numBloqueEnMP %  4);
+		    int direccionEnArregloMPDat = (numBloqueEnMP * 16);
+		    bool sentinela = false;
+		    while(!sentinela)
+		    {
+			    if(pthread_mutex_trylock(&mutexCacheDatLocal) == 0)
+			    {
+					//si tengo el bus
+					if(pthread_mutex_trylock(pBus) == 0)
+					{
+						for(int indice = 0; indice < NUM_THREADS; ++indice)
+						{
+							if(indice != this.id)
+							{
+								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCacheDat()) == 0)
+								{
+								    //si el bloque esta en la caché
+								    if(((&(pVecProcs[indice]))->getCacheDat())[4][numBloqueEnCache][0] == numBloqueEnMP)
+								    {
+								    	((&(pVecProcs[indice]))->getCacheDat())[5][numBloqueEnCache][0] = 0;  //se invalida   						
+								    }
+								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCacheDat()));		//se libera cache remota
+								    for(int i = direccionEnArregloMPDat; i < (direccionEnArregloMPDat + 4); ++i)
+								    {
+					            		cacheDat[i][numBloqueEnCache] = memPDatos[i];
+								    }
+								    cacheDat[4][numBloqueEnCache] = numBloqueEnMP;
+									cacheDat[5][numBloqueEnCache] = 1;
+									for(int d = 0; d < 28; ++d)
+									{ 
+										pthread_barrier_wait(&barrera1);
+									}
+									sentinela = true;
+								}
+					       		else
+					       		{
+					       			pthread_mutex_unlock(pBus);
+					       			break;
+					       		}
+					       	}
+				       	}
+				       	pthread_mutex_unlock(pBus);
+					}
+					pthread_mutex_unlock(&mutexCacheDatLocal);
+			    }
+		    }
 		}
 		
 		//busca el bloque en la cache de instrucciones y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
@@ -461,9 +511,9 @@ class Procesador
 		int LW(int RY, int RX, int n)
 		{
 			//pedir cache datos local
-			pthread_mutex_lock(&mutexCacheLocal);
+			pthread_mutex_lock(&mutexCacheInstLocal);
 				buscarB
-			pthread_mutex_unlock(&mutexCacheLocal);
+			pthread_mutex_unlock(&mutexCacheInstLocal);
 		}
 		
 		/*
