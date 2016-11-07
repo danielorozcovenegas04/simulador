@@ -164,6 +164,7 @@ class Procesador
 										pthread_barrier_wait(&barrera1);
 									}
 									sentinela = true;
+									thi.ciclosUsados += 28;
 								}
 					       		else
 					       		{
@@ -215,6 +216,7 @@ class Procesador
 										pthread_barrier_wait(&barrera1);
 									}
 									sentinela = true;
+									this.ciclosUsados += 28;
 								}
 					       		else
 					       		{
@@ -244,9 +246,9 @@ class Procesador
 		}
 		
 		//busca el bloque en la cache de datos y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
-		int buscarBloqEnCacheDat()
+		int buscarBloqEnCacheDat(int pDireccion)
 		{
-		    int numBloqueEnMP = (this.regsPC[0] / 16);
+			int numBloqueEnMP = (pDireccion / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
 		    //si el bloque no esta en la caché
 		    if(cacheDat[4][numBloqueEnCache] != numBloqueEnMP)
@@ -254,6 +256,26 @@ class Procesador
 		        numBloqueEnCache = -1;
 		    }
 		    return numBloqueEnCache;
+		}
+		
+		int verificarValidezBloqCacheDat(int pNumBloqEnCache)
+		{
+			int retorno = 0;
+			if(cacheDat[5][pNumBloqEnCache] == 1)
+			{
+				retorno = 1;
+			}
+			return retorno;
+		}
+		
+		int verificarValidezBloqCacheInst(int pNumBloqEnCache)
+		{
+			int retorno = 0;
+			if(cacheInst[5][pNumBloqEnCache][0] == 1)
+			{
+				retorno = 1;
+			}
+			return retorno;
 		}
 		
 		//busca la palabra en el bloque de cache de instrucciones y retorna el numero de palabra, retorna -1 en caso de error
@@ -269,15 +291,14 @@ class Procesador
 		}
 		
 		//busca la palabra en el bloque de cache de datos y retorna el numero de palabra, retorna -1 en caso de error
-		int buscarPalEnCacheDat()
+		int buscarPalEnCacheDat(int pDireccion)
 		{
 		    int numPal = -1;
 		    if(buscarBloqEnCacheDat() != -1)
 		    {
-		        numPal = ((this.regsPC[0] % 16) /  4);
+		        numPal = ((pDireccion % 16) /  4);
 		    }
 		    return numPal;
-		    
 		}
 		
 		int* obtenerInstruccionDeCache()
@@ -510,10 +531,35 @@ class Procesador
 		*/
 		int LW(int RY, int RX, int n)
 		{
+			int numBloqEnCache;
+			int numPal;
+			int retorno = 0;
+			int direccion;
+			if(esRegistroValido(RY))
+			{
+				direccion = n + regsPC[RY + 1];
+			}
 			//pedir cache datos local
-			pthread_mutex_lock(&mutexCacheInstLocal);
-				buscarB
-			pthread_mutex_unlock(&mutexCacheInstLocal);
+			pthread_mutex_lock(&mutexCacheDatLocal);
+				//buscar bloque en cache de datos
+				numBloqEnCache = buscarBloqEnCacheDat(direccion);
+				if(numBloqEnCache != -1)
+				{
+					if(verificarValidezBloqCacheDat(numBloqEnCache) == 1)
+					{
+						numPal = buscarPalEnCacheDat(direccion);
+						
+					}
+					else
+					{
+						
+					}
+				}
+				else
+				{
+					
+				}
+			pthread_mutex_unlock(&mutexCacheDatLocal);
 		}
 		
 		/*
