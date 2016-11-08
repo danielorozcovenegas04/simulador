@@ -15,6 +15,31 @@ using namespace std;
 						
 #define QUANTUM 40;
 
+int memPDatos[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
+						
+int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
+						
+int matrizHilillos[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
+								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
+								
+time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
+											//hilillo se comenzo a ejecutar
+								
+int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
+
+time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
+time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
+
+class Procesador;
+
+Procesador vecProcs[NUM_THREADS];	//vector de procesadores o hilos
+pthread_t threads[NUM_THREADS];		//identificadores de los hilos
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t bus = PTHREAD_MUTEX_INITIALIZER;
+pthread_barrier_t barrera1;
+pthread_barrier_t barrera2;
+
 
 //inicio clase Procesador
 class Procesador
@@ -22,7 +47,6 @@ class Procesador
 	private:
 		long id;                    //identificador del nucleo
 	    int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
-	    Procesador* vecProcs[3];     //vector con las referencias a los otros procesadores
 	    int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
 	    int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
 	                                //dato en una direccion se interpreta internamente como un solo entero
@@ -72,19 +96,6 @@ class Procesador
 		    return ciclos;
 		}
 		
-		void setRegsPC(int* p_vecRegsPC)
-		{
-		    for(int i = 0; i < 34; ++i)
-		    {
-		        regsPC[i] = p_vecRegsPC[i];
-		    }
-		}
-		
-		int* getRegsPC()
-		{
-		    return regsPC;
-		}
-		
 		void setCacheInst(int* p_cacheInst)
 		{
 		    cacheInst = p_cacheInst;
@@ -125,7 +136,7 @@ class Procesador
 			return &mutexCacheDatLocal;
 		}
 		
-		void resolverFalloDeCacheInstr(pthread_mutex_t* pBus, Procesador* pVecProcs)
+		void resolverFalloDeCacheInstr()
 		{
 		    int numBloqueEnMP = (this.regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
@@ -136,20 +147,20 @@ class Procesador
 			    if(pthread_mutex_trylock(&mutexCacheInstLocal) == 0)
 			    {
 					//si tengo el bus
-					if(pthread_mutex_trylock(pBus) == 0)
+					if(pthread_mutex_trylock(&bus) == 0)
 					{
 						for(int indice = 0; indice < NUM_THREADS; ++indice)
 						{
 							if(indice != this.id)
 							{
-								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCacheInst()) == 0)
+								if(pthread_mutex_trylock((vecProcs[indice]).getMutexCacheDat()) == 0)
 								{
 								    //si el bloque esta en la caché
-								    if(((&(pVecProcs[indice]))->getCacheInst())[4][numBloqueEnCache][0] == numBloqueEnMP)
+								    if((vecProcs[indice]).getCacheInst()[4][numBloqueEnCache][0] == numBloqueEnMP)
 								    {
-								    	((&(pVecProcs[indice]))->getCacheInst())[5][numBloqueEnCache][0] = 0;  //se invalida   						
+								    	((vecProcs[indice]).getCacheInst()[5][numBloqueEnCache][0] = 0;  //se invalida   						
 								    }
-								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCacheInst()));		//se libera cache remota
+								    pthread_mutex_unlock((vecProcs[indice]).getMutexCacheInst());		//se libera cache remota
 								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); ++i)
 								    {
 								        for(int j = 0; j < 4; ++j)
@@ -159,6 +170,7 @@ class Procesador
 								    }
 								    cacheInst[4][numBloqueEnCache][0] = numBloqueEnMP;
 									cacheInst[5][numBloqueEnCache][0] = 1;
+									//se simulan los 28 ciclos que toma resolver un fallo de cache
 									for(int d = 0; d < 28; ++d)
 									{ 
 										pthread_barrier_wait(&barrera1);
@@ -168,19 +180,20 @@ class Procesador
 								}
 					       		else
 					       		{
-					       			pthread_mutex_unlock(pBus);
+					       			pthread_mutex_unlock(&bus);
 					       			break;
 					       		}
 					       	}
 				       	}
-				       	pthread_mutex_unlock(pBus);
+				       	pthread_mutex_unlock(&bus);
 					}
 					pthread_mutex_unlock(&mutexCacheInstLocal);
 			    }
 		    }
 		}
 		
-		void resolverFalloDeCacheDat(int pNumBloqEnMP, pthread_mutex_t* pBus, Procesador* pVecProcs)
+		//metodo poco util
+		void resolverFalloDeCacheDat(int pNumBloqEnMP)
 		{
 		    int numBloqueEnMP = (this.regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
@@ -191,20 +204,20 @@ class Procesador
 			    if(pthread_mutex_trylock(&mutexCacheDatLocal) == 0)
 			    {
 					//si tengo el bus
-					if(pthread_mutex_trylock(pBus) == 0)
+					if(pthread_mutex_trylock(bus) == 0)
 					{
 						for(int indice = 0; indice < NUM_THREADS; ++indice)
 						{
 							if(indice != this.id)
 							{
-								if(pthread_mutex_trylock((&(pVecProcs[indice]))->getMutexCacheDat()) == 0)
+								if(pthread_mutex_trylock((vecProcs[indice]).getMutexCacheDat()) == 0)
 								{
 								    //si el bloque esta en la caché
-								    if(((&(pVecProcs[indice]))->getCacheDat())[4][numBloqueEnCache][0] == numBloqueEnMP)
+								    if((vecProcs[indice]).getCacheDat()[4][numBloqueEnCache][0] == numBloqueEnMP)
 								    {
-								    	((&(pVecProcs[indice]))->getCacheDat())[5][numBloqueEnCache][0] = 0;  //se invalida   						
+								    	(vecProcs[indice]).getCacheDat()[5][numBloqueEnCache][0] = 0;  //se invalida   						
 								    }
-								    pthread_mutex_unlock((&(pVecProcs[indice]))->getMutexCacheDat()));		//se libera cache remota
+								    pthread_mutex_unlock((vecProcs[indice]).getMutexCacheDat());		//se libera cache remota
 								    for(int i = direccionEnArregloMPDat; i < (direccionEnArregloMPDat + 4); ++i)
 								    {
 					            		cacheDat[i][numBloqueEnCache] = memPDatos[i];
@@ -220,12 +233,12 @@ class Procesador
 								}
 					       		else
 					       		{
-					       			pthread_mutex_unlock(pBus);
+					       			pthread_mutex_unlock(&bus);
 					       			break;
 					       		}
 					       	}
 				       	}
-				       	pthread_mutex_unlock(pBus);
+				       	pthread_mutex_unlock(&bus);
 					}
 					pthread_mutex_unlock(&mutexCacheDatLocal);
 			    }
@@ -330,20 +343,20 @@ class Procesador
 		}
 		
 		//obtiene la instrucción que indique el PC
-		int* obtenerInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs)
+		int* obtenerInstruccion()
 		{
 			int instruccion[4];		//contendra la instrucción que se necesita
 			instruccion = obtenerInstruccionDeCache();
 			while(*instruccion == -1)
 			{
-			    resolverFalloDeCacheInstr(pBus, pVecProcs);
+			    resolverFalloDeCacheInstr();
 			    instruccion = obtenerInstruccionDeCache();
 			}
 			return instruccion;
 		}
 		
 		//obtiene el dato
-		int obtenerDato(int pDireccion, pthread_mutex_t* pBus, Procesador* pVecProcs)
+		int obtenerDato(int pDireccion)
 		{
 		    int numeroBloqEnMP = (pDireccion / 16);
 		    int numeroPal = ((pDireccion % 16) / 4);
@@ -360,9 +373,9 @@ class Procesador
 		* Este metodo se encarga de comprobar que instrucción se va a correr, y
 		* llamar al metodo correspondiente
 		*/
-		void correrInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera) 
+		void correrInstruccion() 
 		{
-			int* palabra = obtenerInstruccion(pBus, pVecProcs);
+			int* palabra = obtenerInstruccion();
 		    int v1 = palabra[0];
 		    int v2 = palabra[1];
 		    int v3 = palabra[2];
@@ -398,10 +411,10 @@ class Procesador
 		            JR(v2);
 		            break;
 		        case 35:
-		            LW(v2, v3, v4, pBus, pVecProcs, pBarrera);
+		            LW(v2, v3, v4);
 		            break;
 		        case 43:
-		        	SW(v2, v3, v4, pBus, pVecProcs, pBarrera);
+		        	SW(v2, v3, v4);
 		        	break;
 		        case 63:
 		            FIN();
@@ -437,7 +450,7 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        Registro[RX] = Registro[RY] + n;    //Realiza el DADDI
+		        regsPC[RX + 1] = regsPC[RY + 1] + n;    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
 		    }
 		}
@@ -451,7 +464,7 @@ class Procesador
 		    //valido hay error
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        Registro[RX] = Registro[RY] + Registro[RZ];    //Realiza el DADDI
+		        regsPC[RX + 1] = regsPC[RY + 1] + regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
 		    }
 		}
@@ -466,7 +479,7 @@ class Procesador
 		    //valido hay error
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        Registro[RX] = Registro[RY] - Registro[RZ];    //Realiza el DADDI
+		        regsPC[RX + 1] = regsPC[RY + 1] - regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
 		    }
 		}
@@ -480,7 +493,7 @@ class Procesador
 		    //valido hay error
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        Registro[RX] = Registro[RY] * Registro[RZ];    //Realiza el DADDI
+		        regsPC[RX + 1] = regsPC[RY + 1] * regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
 		    }
 		}
@@ -494,7 +507,7 @@ class Procesador
 		    //valido hay error
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        Registro[RX] = Registro[RY] / Registro[RZ];    //Realiza el DADDI
+		        regsPC[RX + 1] = regsPC[RY + 1] / regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
 		    }
 		}
@@ -507,7 +520,7 @@ class Procesador
 		    if(esRegistroValido(RX))
 		    {
 		        PC += 4;
-		        if(Registro[RX] == 0){
+		        if(regsPC[RX + 1] == 0){
 		            PC = PC + 4*n;
 		        }
 		    }
@@ -521,7 +534,7 @@ class Procesador
 		    if(esRegistroValido(RX))
 		    {
 		        PC += 4;
-		        if(Registro[RX] != 0){
+		        if(regsPC[RX + 1] != 0){
 		            PC = PC + 4*n;
 		        }
 		    }
@@ -530,7 +543,7 @@ class Procesador
 		/*
 		* Carga un dato de cache de datos al registro indicado
 		*/
-		int LW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera)
+		int LW(int RY, int RX, int n)
 		{
 			int retorno = 0;
 			int direccion;
@@ -566,7 +579,7 @@ class Procesador
 				}
 				if(falloCache)
 				{
-					if(pthread_mutex_trylock(pBus) == 0)
+					if(pthread_mutex_trylock(&bus) == 0)
 					{
 						//sube el bloque de memoria principal de datos a cache de datos
 						numBloquMP = (direccion / 16);
@@ -577,9 +590,9 @@ class Procesador
 						}
 						for(int z = 0; z < 28; ++z)
 						{
-							pthread_barrier_wait(&barrera2);
+							pthread_barrier_wait(&barrera1);
 						}
-						pthread_mutex_unlock(pBus);
+						pthread_mutex_unlock(&bus);
 						numPal = buscarPalEnCacheDat(direccion);
 						if(esRegDestinoValido(RX))
 						{
@@ -612,7 +625,7 @@ class Procesador
 		/*
 		* carga un dato del registro indicado a memoria en la dirección indicada
 		*/
-		int SW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera)
+		int SW(int RY, int RX, int n)
 		{
 			int retorno = 0;
 			int direccion;
@@ -635,33 +648,33 @@ class Procesador
 				{
 					numPal = buscarPalEnCacheDat(direccion);
 				}
-				if(pthread_mutex_trylock(pBus) == 0)
+				if(pthread_mutex_trylock(&bus) == 0)
 				{
 					//pedir caches remotas
 					for(int g = 0; g < NUM_THREADS; ++g)
 					{
 						if(((long)g) != this.id)
 						{
-							if(pthread_mutex_trylock(pVecProcs[g].getMutexCacheDat()) == 0)
+							if(pthread_mutex_trylock(vecProcs[g].getMutexCacheDat()) == 0)
 							{
-								numBloqCache = pVecProcs[g].buscarBloqEnCacheDat(direccion);
+								numBloqCache = vecProcs[g].buscarBloqEnCacheDat(direccion);
 								//si bloque se encuentra en cache
 								if(numBloqCache != -1)
 								{
-									(pVecProcs[g].getCacheDat())[5][numBloqCache] = 0;
+									(vecProcs[g]).getCacheDat()[5][numBloqCache] = 0;
 									//liberar cache remota
-									pthread_mutex_unlock(pVecProcs[g].getMutexCacheDat());
+									pthread_mutex_unlock((vecProcs[g]).getMutexCacheDat());
 									this.ciclosUsados++;
 								}
 								else
 								{
 									//liberar cache remota
-									pthread_mutex_unlock(pVecProcs[g].getMutexCacheDat());
+									pthread_mutex_unlock(vecProcs[g].getMutexCacheDat());
 								}
 							}
 							else
 							{
-								pthread_mutex_unlock(pBus);
+								pthread_mutex_unlock(bus);
 								this.ciclosUsados++;
 								pthread_mutex_unlock(&mutexCacheDatLocal);
 								this.ciclosUsados++;
@@ -681,7 +694,7 @@ class Procesador
 								pthread_barrier_wait(&barrera2);
 							}
 							this.ciclosUsados += 7;
-							pthread_mutex_unlock(pBus);
+							pthread_mutex_unlock(bus);
 							this.ciclosUsados++;
 							this.quantum--;
 						}
@@ -701,7 +714,7 @@ class Procesador
 		void JAL(int n) 
 		{
 		    PC += 4;
-		    Registro[31] = PC;
+		    regsPC[31] = PC;
 		    PC += n;
 		}
 		
@@ -712,7 +725,7 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC = Registro[RX];
+		        PC = regsPC[RX];
 		    }
 		}
 		
@@ -727,29 +740,6 @@ class Procesador
 	
 }
 //fin clase Procesador
-
-int memPDatos[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
-						
-int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
-						
-int matrizHilillos[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
-								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
-								
-time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
-											//hilillo se comenzo a ejecutar
-								
-int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
-
-time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
-time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
-
-Procesador vecProcs[NUM_THREADS];	//vector de procesadores o hilos
-pthread_t threads[NUM_THREADS];		//identificadores de los hilos
-
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t bus = PTHREAD_MUTEX_INITIALIZER;
-pthread_barrier_t barrera1;
-pthread_barrier_t barrera2;
 
 void sacarContexto()
 {
@@ -952,7 +942,7 @@ void correr()
 				//termina zona critica
 				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
 				{
-					procesador0.correrInstruccion(&bus, vecProcs, &barrera2);
+					procesador0.correrInstruccion();
 				}
 				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
 				pthread_mutex_lock(&mutex);
