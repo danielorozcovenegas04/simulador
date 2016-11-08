@@ -539,7 +539,7 @@ class Procesador
 			int numPal;
 			int direcBloqMP;
 			bool falloCache = false;
-			bool sentinela = false;		//sentinela para determinar si se debe seguir pidiendo cache local
+			bool sentinela = false;
 			if(esRegistroValido(RY))
 			{
 				direccion = n + regsPC[RY + 1];
@@ -577,12 +577,16 @@ class Procesador
 						}
 						for(int z = 0; z < 28; ++z)
 						{
-							pthread_barrier_wait(pBarrera);
+							pthread_barrier_wait(&barrera2);
 						}
 						pthread_mutex_unlock(pBus);
 						numPal = buscarPalEnCacheDat(direccion);
-						//carga el dato de la cache de datos al registro indicado
-						regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
+						if(esRegDestinoValido(RX))
+						{
+							//carga el dato de la cache de datos al registro indicado
+							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
+							retorno = 1;
+						}
 						sentinela = true;
 					}
 					else
@@ -598,18 +602,97 @@ class Procesador
 			}
 			this.ciclosUsados++;
 			//si se ejecuto el LW exitosamente
-			if(sentinela)
+			if(retorno == 1)
 			{
 				this.quantum--;
 			}
+			return retorno;
 		}
 		
 		/*
 		* carga un dato del registro indicado a memoria en la dirección indicada
 		*/
-		int SW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs)
+		int SW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera)
 		{
-			
+			int retorno = 0;
+			int direccion;
+			int numBloqCache;
+			int numBloqMP;
+			int numPal;
+			int numPalMP;
+			int direcBloqMP;
+			bool falloCache = false;
+			bool sentinela = false;
+			if(esRegistroValido(RY))
+			{
+				direccion = n + regsPC[RY + 1];
+			}
+			while(!sentinela)
+			{
+				pthread_mutex_lock(&mutexCacheDatLocal);
+				numBloqCache = buscarBloqEnCacheDat(direccion);
+				if(numBloqCache != -1)
+				{
+					numPal = buscarPalEnCacheDat(direccion);
+				}
+				if(pthread_mutex_trylock(pBus) == 0)
+				{
+					//pedir caches remotas
+					for(int g = 0; g < NUM_THREADS; ++g)
+					{
+						if(((long)g) != this.id)
+						{
+							if(pthread_mutex_trylock(pVecProcs[g].getMutexCacheDat()) == 0)
+							{
+								numBloqCache = pVecProcs[g].buscarBloqEnCacheDat(direccion);
+								//si bloque se encuentra en cache
+								if(numBloqCache != -1)
+								{
+									(pVecProcs[g].getCacheDat())[5][numBloqCache] = 0;
+									//liberar cache remota
+									pthread_mutex_unlock(pVecProcs[g].getMutexCacheDat());
+									this.ciclosUsados++;
+								}
+								else
+								{
+									//liberar cache remota
+									pthread_mutex_unlock(pVecProcs[g].getMutexCacheDat());
+								}
+							}
+							else
+							{
+								pthread_mutex_unlock(pBus);
+								this.ciclosUsados++;
+								pthread_mutex_unlock(&mutexCacheDatLocal);
+								this.ciclosUsados++;
+							}
+						}
+						//si se revisaron  e invalidaron las otras caches, entonces no se sigue intentando
+						if(g == 2)
+						{
+							sentinela = true;
+							//copiar dato en registro a palabra en cache de datos
+							cacheDat[numPal][numBloqCache] = vecProcs[RX + 1];
+							numPalMP = (direccion / 4);
+							//copiar palabra de cache de datos a memoria principal de datos
+							memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
+							for(int y = 0; y < 7; ++y)
+							{
+								pthread_barrier_wait(&barrera2);
+							}
+							this.ciclosUsados += 7;
+							pthread_mutex_unlock(pBus);
+							this.ciclosUsados++;
+							this.quantum--;
+						}
+					}
+				}
+				else
+				{
+					pthread_mutex_unlock(&mutexCacheDatLocal);
+					this.ciclosUsados++;
+				}
+			}
 		}
 		
 		/*
