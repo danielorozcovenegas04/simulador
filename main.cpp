@@ -599,6 +599,7 @@ class Procesador
 							//carga el dato de la cache de datos al registro indicado
 							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
+							this.PC += 4;
 						}
 						sentinela = true;
 					}
@@ -689,9 +690,11 @@ class Procesador
 							numPalMP = (direccion / 4);
 							//copiar palabra de cache de datos a memoria principal de datos
 							memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
+							retorno = 1;
+							this.PC += 4;
 							for(int y = 0; y < 7; ++y)
 							{
-								pthread_barrier_wait(&barrera2);
+								pthread_barrier_wait(&barrera1);
 							}
 							this.ciclosUsados += 7;
 							pthread_mutex_unlock(bus);
@@ -714,7 +717,7 @@ class Procesador
 		void JAL(int n) 
 		{
 		    PC += 4;
-		    regsPC[31] = PC;
+		    regsPC[31 + 1] = PC;
 		    PC += n;
 		}
 		
@@ -725,7 +728,7 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC = regsPC[RX];
+		        PC = regsPC[RX + 1];
 		    }
 		}
 		
