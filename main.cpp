@@ -539,11 +539,14 @@ class Procesador
 			int numPal;
 			int direcBloqMP;
 			bool falloCache = false;
+			bool sentinela = false;		//sentinela para determinar si se debe seguir pidiendo cache local
 			if(esRegistroValido(RY))
 			{
 				direccion = n + regsPC[RY + 1];
 			}
-			pthread_mutex_lock(&mutexCacheDatLocal);
+			while(!sentinela)
+			{
+				pthread_mutex_lock(&mutexCacheDatLocal);
 				numBloqCache = buscarBloqEnCacheDat(direccion);
 				if(numBloqCache != -1)
 				{
@@ -565,6 +568,7 @@ class Procesador
 				{
 					if(pthread_mutex_trylock(pBus) == 0)
 					{
+						//sube el bloque de memoria principal de datos a cache de datos
 						numBloquMP = (direccion / 16);
 						direcBloqMP = (numBloquMP * 16);
 						for(int i = direcBloqMP; i < (direcBloqMP + 16); i += 4)
@@ -575,12 +579,29 @@ class Procesador
 						{
 							pthread_barrier_wait(pBarrera);
 						}
+						pthread_mutex_unlock(pBus);
+						numPal = buscarPalEnCacheDat(direccion);
+						//carga el dato de la cache de datos al registro indicado
+						regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
+						sentinela = true;
+					}
+					else
+					{
+						this.ciclosUsados++;
+						pthread_mutex_unlock(&mutexCacheDatLocal);
 					}
 				}
-			pthread_mutex_unlock(&mutexCacheDatLocal);
-			regsPC[RX + 1] = obtenerDato(direccion, pBus, pVecProcs);	//obtenerDato() resuelve todos los problemas
+				else
+				{
+					pthread_mutex_unlock(&mutexCacheDatLocal);
+				}
+			}
 			this.ciclosUsados++;
-			this.quantum--;
+			//si se ejecuto el LW exitosamente
+			if(sentinela)
+			{
+				this.quantum--;
+			}
 		}
 		
 		/*
