@@ -22,7 +22,7 @@ class Procesador
 	private:
 		long id;                    //identificador del nucleo
 	    int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
-	    Procesador* vecProcs[2];     //vector con las referencias a los otros procesadores
+	    Procesador* vecProcs[3];     //vector con las referencias a los otros procesadores
 	    int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
 	    int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
 	                                //dato en una direccion se interpreta internamente como un solo entero
@@ -360,8 +360,9 @@ class Procesador
 		* Este metodo se encarga de comprobar que instrucción se va a correr, y
 		* llamar al metodo correspondiente
 		*/
-		void correrInstruccion(int* palabra) 
+		void correrInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs) 
 		{
+			int* palabra = obtenerInstruccion(pBus, pVecProcs);
 		    int v1 = palabra[0];
 		    int v2 = palabra[1];
 		    int v3 = palabra[2];
@@ -397,10 +398,10 @@ class Procesador
 		            JR(v2);
 		            break;
 		        case 35:
-		            LW(v2, v3, v4);
+		            LW(v2, v3, v4, pBus, pVecProcs);
 		            break;
 		        case 43:
-		        	SW(v2, v3, v4);
+		        	SW(v2, v3, v4, pBus, pVecProcs);
 		        	break;
 		        case 63:
 		            FIN();
@@ -529,7 +530,7 @@ class Procesador
 		/*
 		* Carga un dato de cache de datos al registro indicado
 		*/
-		int LW(int RY, int RX, int n)
+		int LW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs)
 		{
 			int numBloqEnCache;
 			int numPal;
@@ -548,7 +549,7 @@ class Procesador
 					if(verificarValidezBloqCacheDat(numBloqEnCache) == 1)
 					{
 						numPal = buscarPalEnCacheDat(direccion);
-						
+						regsPC[RX + 1] = obtenerDato(direccion, &bus, vecProcs)
 					}
 					else
 					{
@@ -565,7 +566,7 @@ class Procesador
 		/*
 		* carga un dato del registro indicado a memoria en la dirección indicada
 		*/
-		int SW(int RY, int RX, int n)
+		int SW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs)
 		{
 			
 		}
@@ -827,7 +828,7 @@ void correr()
 				//termina zona critica
 				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
 				{
-					procesador0.correrInstruccion(procesador0.obtenerInstruccion(&bus, vecProcs));
+					procesador0.correrInstruccion(&bus, vecProcs);
 				}
 				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
 				pthread_mutex_lock(&mutex);
