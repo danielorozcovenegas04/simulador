@@ -360,7 +360,7 @@ class Procesador
 		* Este metodo se encarga de comprobar que instrucción se va a correr, y
 		* llamar al metodo correspondiente
 		*/
-		void correrInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs) 
+		void correrInstruccion(pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera) 
 		{
 			int* palabra = obtenerInstruccion(pBus, pVecProcs);
 		    int v1 = palabra[0];
@@ -398,10 +398,10 @@ class Procesador
 		            JR(v2);
 		            break;
 		        case 35:
-		            LW(v2, v3, v4, pBus, pVecProcs);
+		            LW(v2, v3, v4, pBus, pVecProcs, pBarrera);
 		            break;
 		        case 43:
-		        	SW(v2, v3, v4, pBus, pVecProcs);
+		        	SW(v2, v3, v4, pBus, pVecProcs, pBarrera);
 		        	break;
 		        case 63:
 		            FIN();
@@ -530,37 +530,57 @@ class Procesador
 		/*
 		* Carga un dato de cache de datos al registro indicado
 		*/
-		int LW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs)
+		int LW(int RY, int RX, int n, pthread_mutex_t* pBus, Procesador* pVecProcs, pthread_barrier_t* pBarrera)
 		{
-			int numBloqEnCache;
-			int numPal;
 			int retorno = 0;
 			int direccion;
+			int numBloqCache;
+			int numBloqMP;
+			int numPal;
+			int direcBloqMP;
+			bool falloCache = false;
 			if(esRegistroValido(RY))
 			{
 				direccion = n + regsPC[RY + 1];
 			}
-			//pedir cache datos local
 			pthread_mutex_lock(&mutexCacheDatLocal);
-				//buscar bloque en cache de datos
-				numBloqEnCache = buscarBloqEnCacheDat(direccion);
-				if(numBloqEnCache != -1)
+				numBloqCache = buscarBloqEnCacheDat(direccion);
+				if(numBloqCache != -1)
 				{
-					if(verificarValidezBloqCacheDat(numBloqEnCache) == 1)
+					if(verificarValidezBloqCacheDat(numBloqCache) == 1)
 					{
 						numPal = buscarPalEnCacheDat(direccion);
-						regsPC[RX + 1] = obtenerDato(direccion, &bus, vecProcs)
+						regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 					}
 					else
 					{
-						
+						falloCache = true;
 					}
 				}
 				else
 				{
-					
+					falloCache = true;
+				}
+				if(falloCache)
+				{
+					if(pthread_mutex_trylock(pBus) == 0)
+					{
+						numBloquMP = (direccion / 16);
+						direcBloqMP = (numBloquMP * 16);
+						for(int i = direcBloqMP; i < (direcBloqMP + 16); i += 4)
+						{
+							cacheDat[((direcBloqMP) % 16) / 4][numBloqCache] = memPDatos[i / 4];
+						}
+						for(int z = 0; z < 28; ++z)
+						{
+							pthread_barrier_wait(pBarrera);
+						}
+					}
 				}
 			pthread_mutex_unlock(&mutexCacheDatLocal);
+			regsPC[RX + 1] = obtenerDato(direccion, pBus, pVecProcs);	//obtenerDato() resuelve todos los problemas
+			this.ciclosUsados++;
+			this.quantum--;
 		}
 		
 		/*
@@ -828,7 +848,7 @@ void correr()
 				//termina zona critica
 				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
 				{
-					procesador0.correrInstruccion(&bus, vecProcs);
+					procesador0.correrInstruccion(&bus, vecProcs, &barrera2);
 				}
 				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
 				pthread_mutex_lock(&mutex);
