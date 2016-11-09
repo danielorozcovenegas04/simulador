@@ -54,11 +54,17 @@ class Procesador
 	    int ciclosUsados;	
 		pthread_mutex_t mutexCacheInstLocal;
 		pthread_mutex_t mutexCacheDatLocal;
+		int quantum;
 	
 	public:
 		Procesador(int pID)
 		{
 		    id = pID;
+		}
+		
+		Procesador()
+		{
+		    id = 0;
 		}
 		
 		~Procesador()
@@ -452,6 +458,8 @@ class Procesador
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] + n;    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		    
@@ -466,6 +474,8 @@ class Procesador
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] + regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		    
@@ -481,6 +491,8 @@ class Procesador
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] - regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		    
@@ -495,6 +507,8 @@ class Procesador
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] * regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		    
@@ -509,6 +523,8 @@ class Procesador
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] / regsPC[RZ + 1];    //Realiza el DADDI
 		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		
@@ -523,6 +539,8 @@ class Procesador
 		        if(regsPC[RX + 1] == 0){
 		            PC = PC + 4*n;
 		        }
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		
@@ -537,6 +555,8 @@ class Procesador
 		        if(regsPC[RX + 1] != 0){
 		            PC = PC + 4*n;
 		        }
+		        this.ciclosUsados++;
+		    	this.quantum--;
 		    }
 		}
 		
@@ -599,6 +619,7 @@ class Procesador
 							//carga el dato de la cache de datos al registro indicado
 							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
+							this.PC += 4;
 						}
 						sentinela = true;
 					}
@@ -689,9 +710,11 @@ class Procesador
 							numPalMP = (direccion / 4);
 							//copiar palabra de cache de datos a memoria principal de datos
 							memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
+							retorno = 1;
+							this.PC += 4;
 							for(int y = 0; y < 7; ++y)
 							{
-								pthread_barrier_wait(&barrera2);
+								pthread_barrier_wait(&barrera1);
 							}
 							this.ciclosUsados += 7;
 							pthread_mutex_unlock(bus);
@@ -714,8 +737,10 @@ class Procesador
 		void JAL(int n) 
 		{
 		    PC += 4;
-		    regsPC[31] = PC;
+		    regsPC[31 + 1] = PC;
 		    PC += n;
+		    this.ciclosUsados++;
+		    this.quantum--;
 		}
 		
 		/*
@@ -725,7 +750,9 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC = regsPC[RX];
+		        PC = regsPC[RX + 1];
+		        this.ciclosUsados++;
+		        this.quantum--;
 		    }
 		}
 		
@@ -736,9 +763,11 @@ class Procesador
 		{
 		    PC += 4;
 		    estadoHilillo = 3;
+		    this->ciclosUsados++;
+		    this->quantum--;
 		}
 	
-}
+};
 //fin clase Procesador
 
 void sacarContexto()
@@ -874,30 +903,33 @@ void correr()
 			break;
 		}
 	}
+	Procesador procesador0;
+	Procesador procesador1;
+	Procesador procesador2;
 	
 	switch(numNucleo)
 	{
 		case 0:
-			Procesador procesador0 = new Procesador(numNucleo);
+			procesador0 = new Procesador(numNucleo);
 			pthread_mutex_lock(&mutex);
 				vecProcs[numNucleo] = &procesador0;
 			pthread_mutex_unlock(&mutex);
 			break;
 		case 1:
-			Procesador procesador1 = new Procesador(numNucleo);
+			procesador1 = new Procesador(numNucleo);
 			pthread_mutex_lock(&mutex);
 				vecProcs[numNucleo] = &procesador1;
 			pthread_mutex_unlock(&mutex);
 			break;
 		case 2:
-			Procesador procesador2 = new Procesador(numNucleo);
+			procesador2 = new Procesador(numNucleo);
 			pthread_mutex_lock(&mutex);
 				vecProcs[numNucleo] = &procesador2;
 			pthread_mutex_unlock(&mutex);
 			break;
 	}
 	
-	pthread_barrier_wait(&barrera1);
+	pthread_barrier_wait(&barrera2);
 	switch(numNucleo)
 	{
 		case 0:
@@ -940,21 +972,118 @@ void correr()
 					}
 				pthread_mutex_unlock(&mutex);
 				//termina zona critica
-				while((procesador0.getQuantum > 0) && (procesador0.getEstadoHilillo() != 3))
+				while((procesador0.getQuantum() > 0) && (procesador0.getEstadoHilillo() != 3))
 				{
 					procesador0.correrInstruccion();
 				}
 				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
+				pthread_barrier_wait(&barrera2);
 				pthread_mutex_lock(&mutex);
 					sacarContexto();
 				pthread_mutex_unlock(&mutex);
 			}
 			break;
 		case 1:
-			
+			//el hilo correra hasta que no hayan mas hilillos en espera
+			while(*colaHilillos != -1)
+			{
+				//inicia zona critica
+				pthread_mutex_lock(&mutex);
+					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
+					{
+						if(colaHilillos[35] == 0)
+						{
+							time(&tiempoInicio);
+							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+						}
+						colaHilillos[35] = 2;
+						cargarContexto(numNucleo);
+						indiceHililloActual = colaHilillos[36];
+						it = indiceHililloActual + 1;
+						while((it != indiceHililloActual) && !proximoHilo)
+						{
+							if(it >= NUM_HILILLOS)
+							{
+								it = 0;
+							}
+							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							{
+								colaHilillos = &(matrizHilillos[it]);
+								proximoHilo = true;
+							}
+							else
+							{
+								++it;
+							}
+						}
+						if((it == indiceHililloActual) && !proximoHilo)
+						{
+							*colaHilillos = -1;
+						}
+					}
+				pthread_mutex_unlock(&mutex);
+				//termina zona critica
+				while((procesador1.getQuantum() > 0) && (procesador1.getEstadoHilillo() != 3))
+				{
+					procesador1.correrInstruccion();
+				}
+				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
+				pthread_barrier_wait(&barrera2);
+				pthread_mutex_lock(&mutex);
+					sacarContexto();
+				pthread_mutex_unlock(&mutex);
+			}
 			break;
 		case 2:
-			
+			//el hilo correra hasta que no hayan mas hilillos en espera
+			while(*colaHilillos != -1)
+			{
+				//inicia zona critica
+				pthread_mutex_lock(&mutex);
+					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
+					{
+						if(colaHilillos[35] == 0)
+						{
+							time(&tiempoInicio);
+							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+						}
+						colaHilillos[35] = 2;
+						cargarContexto(numNucleo);
+						indiceHililloActual = colaHilillos[36];
+						it = indiceHililloActual + 1;
+						while((it != indiceHililloActual) && !proximoHilo)
+						{
+							if(it >= NUM_HILILLOS)
+							{
+								it = 0;
+							}
+							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							{
+								colaHilillos = &(matrizHilillos[it]);
+								proximoHilo = true;
+							}
+							else
+							{
+								++it;
+							}
+						}
+						if((it == indiceHililloActual) && !proximoHilo)
+						{
+							*colaHilillos = -1;
+						}
+					}
+				pthread_mutex_unlock(&mutex);
+				//termina zona critica
+				while((procesador2.getQuantum() > 0) && (procesador2.getEstadoHilillo() != 3))
+				{
+					procesador2.correrInstruccion();
+				}
+				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
+				pthread_barrier_wait(&barrera2);
+				pthread_mutex_lock(&mutex);
+					sacarContexto();
+				pthread_mutex_unlock(&mutex);
+			}
 			break;
 	}
 }
@@ -1043,7 +1172,7 @@ void cargarHilillos()
 				{
 					matrizHilillos[i][0] = 	PC;
 					matrizHilillos[i][35] = 0;
-					colaHilillos = &(matrizHilillos[0]);
+					colaHilillos = &(matrizHilillos);
 					primerInstr = false;
 				}
 				memPInst[PC - 384] = v1;
@@ -1169,6 +1298,7 @@ int main()
 {
 	
 	cargarHilillos();
+	crearNucleos();
 	//imprimirMPInstr();
 	//imprimirMatrizHilillos();
 
