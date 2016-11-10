@@ -1,8 +1,8 @@
 #include <iostream>
 #include <cstdlib>
-#include <pthread.h>
+#include <pthreadh>
 #include <fstream>
-#include <time.h>
+#include <timeh>
 
 using namespace std;
 
@@ -94,30 +94,30 @@ class Procesador
 		
 		void setCiclos(int p_ciclos)
 		{
-		    ciclos = p_ciclos;
+		    ciclosUsados = p_ciclos;
 		}
 		
 		int getCiclos()
 		{
-		    return ciclos;
+		    return ciclosUsados;
 		}
 		
-		void setCacheInst(int* p_cacheInst)
+		void setCacheInst(int*** p_cacheInst)
 		{
 		    cacheInst = p_cacheInst;
 		}
 		
-		int* getCacheInst()
+		int*** getCacheInst()
 		{
 		    return cacheInst;
 		}
 		
-		void setCacheDat(int* p_cacheDat)
+		void setCacheDat(int** p_cacheDat)
 		{
 		    cacheDat = p_cacheDat;
 		}
 		
-		int* getCacheDat()
+		int** getCacheDat()
 		{
 		    return cacheDat;
 		}
@@ -144,7 +144,7 @@ class Procesador
 		
 		void resolverFalloDeCacheInstr()
 		{
-		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnMP = (regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
 		    int direccionEnArregloMPInstr = (numBloqueEnMP * 16) - 384;
 		    bool sentinela = false;
@@ -157,7 +157,7 @@ class Procesador
 					{
 						for(int indice = 0; indice < NUM_THREADS; ++indice)
 						{
-							if(indice != this.id)
+							if(indice != id)
 							{
 								if(pthread_mutex_trylock((vecProcs[indice]).getMutexCacheDat()) == 0)
 								{
@@ -182,7 +182,7 @@ class Procesador
 										pthread_barrier_wait(&barrera1);
 									}
 									sentinela = true;
-									thi.ciclosUsados += 28;
+									ciclosUsados += 28;
 								}
 					       		else
 					       		{
@@ -201,7 +201,7 @@ class Procesador
 		//metodo poco util
 		void resolverFalloDeCacheDat(int pNumBloqEnMP)
 		{
-		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnMP = (regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
 		    int direccionEnArregloMPDat = (numBloqueEnMP * 16);
 		    bool sentinela = false;
@@ -214,7 +214,7 @@ class Procesador
 					{
 						for(int indice = 0; indice < NUM_THREADS; ++indice)
 						{
-							if(indice != this.id)
+							if(indice != id)
 							{
 								if(pthread_mutex_trylock((vecProcs[indice]).getMutexCacheDat()) == 0)
 								{
@@ -235,7 +235,7 @@ class Procesador
 										pthread_barrier_wait(&barrera1);
 									}
 									sentinela = true;
-									this.ciclosUsados += 28;
+									ciclosUsados += 28;
 								}
 					       		else
 					       		{
@@ -254,7 +254,7 @@ class Procesador
 		//busca el bloque en la cache de instrucciones y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
 		int buscarBloqEnCacheInstr()
 		{
-		    int numBloqueEnMP = (this.regsPC[0] / 16);
+		    int numBloqueEnMP = (regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
 		    //si el bloque no esta en la caché
 		    if(cacheInst[4][numBloqueEnCache] != numBloqueEnMP)
@@ -303,7 +303,7 @@ class Procesador
 		    int numPal = -1;
 		    if(buscarBloqEnCacheInstr() != -1)
 		    {
-		        numPal = ((this.regsPC[0] % 16) /  4);
+		        numPal = ((regsPC[0] % 16) /  4);
 		    }
 		    return numPal;
 		    
@@ -457,9 +457,9 @@ class Procesador
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] + n;    //Realiza el DADDI
-		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		    
@@ -473,9 +473,9 @@ class Procesador
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] + regsPC[RZ + 1];    //Realiza el DADDI
-		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		    
@@ -490,9 +490,9 @@ class Procesador
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] - regsPC[RZ + 1];    //Realiza el DADDI
-		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		    
@@ -506,9 +506,9 @@ class Procesador
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] * regsPC[RZ + 1];    //Realiza el DADDI
-		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		    
@@ -522,9 +522,9 @@ class Procesador
 		    if(esDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
 		        regsPC[RX + 1] = regsPC[RY + 1] / regsPC[RZ + 1];    //Realiza el DADDI
-		        PC +=4;                             //Suma 4 al PC para pasar a la siguiente instruccion
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		
@@ -535,12 +535,12 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC += 4;
+		        regsPC[0] += 4;
 		        if(regsPC[RX + 1] == 0){
-		            PC = PC + 4*n;
+		            regsPC[0] = regsPC[0] + 4*n;
 		        }
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		
@@ -551,12 +551,12 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC += 4;
+		        regsPC[0] += 4;
 		        if(regsPC[RX + 1] != 0){
-		            PC = PC + 4*n;
+		            regsPC[0] = regsPC[0] + 4*n;
 		        }
-		        this.ciclosUsados++;
-		    	this.quantum--;
+		        ciclosUsados++;
+		    	quantum--;
 		    }
 		}
 		
@@ -619,13 +619,13 @@ class Procesador
 							//carga el dato de la cache de datos al registro indicado
 							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
-							this.PC += 4;
+							regsPC[0] += 4;
 						}
 						sentinela = true;
 					}
 					else
 					{
-						this.ciclosUsados++;
+						ciclosUsados++;
 						pthread_mutex_unlock(&mutexCacheDatLocal);
 					}
 				}
@@ -634,11 +634,11 @@ class Procesador
 					pthread_mutex_unlock(&mutexCacheDatLocal);
 				}
 			}
-			this.ciclosUsados++;
+			ciclosUsados++;
 			//si se ejecuto el LW exitosamente
 			if(retorno == 1)
 			{
-				this.quantum--;
+				quantum--;
 			}
 			return retorno;
 		}
@@ -674,31 +674,31 @@ class Procesador
 					//pedir caches remotas
 					for(int g = 0; g < NUM_THREADS; ++g)
 					{
-						if(((long)g) != this.id)
+						if(((long)g) != id)
 						{
-							if(pthread_mutex_trylock(vecProcs[g].getMutexCacheDat()) == 0)
+							if(pthread_mutex_trylock(vecProcs[g]getMutexCacheDat()) == 0)
 							{
-								numBloqCache = vecProcs[g].buscarBloqEnCacheDat(direccion);
+								numBloqCache = vecProcs[g]buscarBloqEnCacheDat(direccion);
 								//si bloque se encuentra en cache
 								if(numBloqCache != -1)
 								{
-									(vecProcs[g]).getCacheDat()[5][numBloqCache] = 0;
+									(vecProcs[g])getCacheDat()[5][numBloqCache] = 0;
 									//liberar cache remota
-									pthread_mutex_unlock((vecProcs[g]).getMutexCacheDat());
-									this.ciclosUsados++;
+									pthread_mutex_unlock((vecProcs[g])getMutexCacheDat());
+									ciclosUsados++;
 								}
 								else
 								{
 									//liberar cache remota
-									pthread_mutex_unlock(vecProcs[g].getMutexCacheDat());
+									pthread_mutex_unlock(vecProcs[g]getMutexCacheDat());
 								}
 							}
 							else
 							{
 								pthread_mutex_unlock(bus);
-								this.ciclosUsados++;
+								ciclosUsados++;
 								pthread_mutex_unlock(&mutexCacheDatLocal);
-								this.ciclosUsados++;
+								ciclosUsados++;
 							}
 						}
 						//si se revisaron  e invalidaron las otras caches, entonces no se sigue intentando
@@ -711,22 +711,22 @@ class Procesador
 							//copiar palabra de cache de datos a memoria principal de datos
 							memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
-							this.PC += 4;
+							regsPC[0] += 4;
 							for(int y = 0; y < 7; ++y)
 							{
 								pthread_barrier_wait(&barrera1);
 							}
-							this.ciclosUsados += 7;
-							pthread_mutex_unlock(bus);
-							this.ciclosUsados++;
-							this.quantum--;
+							ciclosUsados += 7;
+							pthread_mutex_unlock(&bus);
+							ciclosUsados++;
+							quantum--;
 						}
 					}
 				}
 				else
 				{
 					pthread_mutex_unlock(&mutexCacheDatLocal);
-					this.ciclosUsados++;
+					ciclosUsados++;
 				}
 			}
 		}
@@ -736,11 +736,11 @@ class Procesador
 		*/
 		void JAL(int n) 
 		{
-		    PC += 4;
-		    regsPC[31 + 1] = PC;
-		    PC += n;
-		    this.ciclosUsados++;
-		    this.quantum--;
+		    regsPC[0] += 4;
+		    regsPC[31 + 1] = regsPC[0];
+		    regsPC[0] += n;
+		    ciclosUsados++;
+		    quantum--;
 		}
 		
 		/*
@@ -750,9 +750,9 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        PC = regsPC[RX + 1];
-		        this.ciclosUsados++;
-		        this.quantum--;
+		        regsPC[0] = regsPC[RX + 1];
+		        ciclosUsados++;
+		        quantum--;
 		    }
 		}
 		
@@ -761,10 +761,10 @@ class Procesador
 		*/
 		void FIN() 
 		{
-		    PC += 4;
+		    regsPC[0] += 4;
 		    estadoHilillo = 3;
-		    this->ciclosUsados++;
-		    this->quantum--;
+		    ciclosUsados++;
+		    quantum--;
 		}
 	
 };
@@ -776,7 +776,7 @@ void sacarContexto()
 	switch(numNucleo)
 	{
 		case 0:
-			regsPCTemp = procesador0.getRegsPC();
+			regsPCTemp = procesador0getRegsPC();
 			for(int j = 0; j < NUM_HILILLOS; ++j)
 			{
 				if(procesador0.getId() == matrizHilillos[j][36])
@@ -823,7 +823,7 @@ void sacarContexto()
 			regsPCTemp = procesador2.getRegsPC();
 			for(int j = 0; j < NUM_HILILLOS; ++j)
 			{
-				if(procesador0.getId() == matrizHilillos[j][36])
+				if(procesador2.getId() == matrizHilillos[j][36])
 				{
 					matrizHilillos[j][34] += procesador2.getCiclos();
 					if(procesador2.getEstadoHilillo() != 3)
@@ -1152,11 +1152,11 @@ void cargarHilillos()
 	{
 		bool primerInstr = true;
 		int PC;
-		ifstream flujoEntrada1("0.txt", ios::in);
-		ifstream flujoEntrada2("1.txt", ios::in);
-		ifstream flujoEntrada3("2.txt", ios::in);
-		ifstream flujoEntrada4("3.txt", ios::in);
-		ifstream flujoEntrada5("4.txt", ios::in);
+		ifstream flujoEntrada1("0txt", ios::in);
+		ifstream flujoEntrada2("1txt", ios::in);
+		ifstream flujoEntrada3("2txt", ios::in);
+		ifstream flujoEntrada4("3txt", ios::in);
+		ifstream flujoEntrada5("4txt", ios::in);
 		if(!flujoEntrada1 || !flujoEntrada2 || !flujoEntrada3 || !flujoEntrada4 || !flujoEntrada5)
 		{
 			cerr << "No se pudo abrir un archivo" << endl;
