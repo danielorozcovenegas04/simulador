@@ -19,7 +19,7 @@ int memPDatos[TAM_MPDat];		//vector que representa la memoria principal comparti
 						
 int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
 						
-int matrizHilillos[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
+int matrizHilillos[NUM_HILILLOS*37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
 								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
 								
 time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
@@ -47,8 +47,8 @@ class Procesador
 	private:
 		long id;                    //identificador del nucleo
 	    int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
-	    int cacheInst[6][4][4];     //matriz que representa la cache de instrucciones, tridimensional porque cada palabra es de cuatro enteros
-	    int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional porque cada 
+	    int cacheInst[96];     //matriz que representa la cache de instrucciones, tridimensional (6*4*4) porque cada palabra es de cuatro enteros
+	    int cacheDat[24];         //matriz que representa la cache de datos, no es tridimensional (6*4) porque cada 
 	                                //dato en una direccion se interpreta internamente como un solo entero
 	    int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en espera, un 2 si esta corriendo, y un 3 si ya termino
 	    int ciclosUsados;	
@@ -82,7 +82,7 @@ class Procesador
 		    return id;
 		}
 		
-		void setRegsPC(int* pRegsPC)
+		void setRegsPC(int[34] pRegsPC)
 		{
 			regsPC = pRegsPC;
 		}
@@ -112,22 +112,22 @@ class Procesador
 		    return ciclosUsados;
 		}
 		
-		void setCacheInst(int[6][4][4] p_cacheInst)
+		void setCacheInst(int[96] p_cacheInst)
 		{
 		    cacheInst = p_cacheInst;
 		}
 		
-		int[6][4][4] getCacheInst()
+		int* getCacheInst()
 		{
 		    return cacheInst;
 		}
 		
-		void setCacheDat(int[6][4] p_cacheDat)
+		void setCacheDat(int[24] p_cacheDat)
 		{
 		    cacheDat = p_cacheDat;
 		}
 		
-		int[6][4] getCacheDat()
+		int* getCacheDat()
 		{
 		    return cacheDat;
 		}
@@ -342,7 +342,7 @@ class Procesador
 			else
 			{
 			    numeroPal = buscarPalEnCacheInstr();
-			    instruccion = &(cacheInst[numeroPal][numeroBloq]);
+			    instruccion = (cacheInst + ((numeroBloq*16) + (numeroPal*4)));
 			}
 			return instruccion;
 		}
@@ -692,7 +692,7 @@ class Procesador
 								//si bloque se encuentra en cache
 								if(numBloqCache != -1)
 								{
-									(vecProcs[g])->getCacheDat()[5][numBloqCache] = 0;
+									*(((vecProcs[g])->getCacheDat())+(5*numBloqCache*16)) = 0;
 									//liberar cache remota
 									pthread_mutex_unlock((vecProcs[g])->getMutexCacheDat());
 									ciclosUsados++;
@@ -948,6 +948,7 @@ void correr()
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
+					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
 					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
 					{
 						if(colaHilillos[35] == 0)
@@ -965,9 +966,10 @@ void correr()
 							{
 								it = 0;
 							}
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
+							if((*(matrizHilillos + ((it*37) + 35)) == 0) || (*(matrizHilillos + ((it*37) + 35)) == 1))
 							{
-								colaHilillos = &(matrizHilillos[it]);
+								colaHilillos = (matrizHilillos + (it*37));
 								proximoHilo = true;
 							}
 							else
@@ -999,6 +1001,7 @@ void correr()
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
+					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
 					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
 					{
 						if(colaHilillos[35] == 0)
@@ -1016,9 +1019,10 @@ void correr()
 							{
 								it = 0;
 							}
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
+							if((*(matrizHilillos + ((it*37) + 35)) == 0) || (*(matrizHilillos + ((it*37) + 35)) == 1))
 							{
-								colaHilillos = &(matrizHilillos[it]);
+								colaHilillos = &(matrizHilillos[it][0]);
 								proximoHilo = true;
 							}
 							else
@@ -1050,6 +1054,7 @@ void correr()
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
+					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
 					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
 					{
 						if(colaHilillos[35] == 0)
@@ -1067,9 +1072,10 @@ void correr()
 							{
 								it = 0;
 							}
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
+							if((*(matrizHilillos + ((it*37) + 35)) == 0) || (*(matrizHilillos + ((it*37) + 35)) == 1))
 							{
-								colaHilillos = &(matrizHilillos[it]);
+								colaHilillos = &(matrizHilillos[it][0]);
 								proximoHilo = true;
 							}
 							else
@@ -1182,7 +1188,7 @@ void cargarHilillos()
 				{
 					matrizHilillos[i][0] = 	PC;
 					matrizHilillos[i][35] = 0;
-					colaHilillos = &(matrizHilillos);
+					colaHilillos = &(matrizHilillos[0][0]);
 					primerInstr = false;
 				}
 				memPInst[PC - 384] = v1;
