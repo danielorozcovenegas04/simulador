@@ -3,8 +3,7 @@
 #include <pthread.h>
 #include <fstream>
 #include <time.h>
-
-using namespace std;
+#include <vector>
 
 #define NUM_THREADS 3
 #define NUM_HILILLOS 5	//numero de hilillos a ejecutar
@@ -15,24 +14,25 @@ using namespace std;
 						
 #define QUANTUM 40
 
-int memPDatos[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
+int* memPDatos = new int[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
 						
-int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
+int* memPInst = new int[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
 						
-int matrizHilillos[NUM_HILILLOS*37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
+int** matrizHilillos = new int[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
 								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
 								
 time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
 											//hilillo se comenzo a ejecutar
 								
-int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
+int* colaHilillos = new int[37];		//representa el proximo hilillo en espera de ser cargado a algun procesador
 
-time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
-time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
+std::time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
+std::time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
 
 class Procesador;
 
-Procesador* vecProcs[NUM_THREADS];	//vector de procesadores o hilos
+std::vector<Procesador> vecProcs;  //vector de procesadores o hilos
+//Procesador* vecProcs[NUM_THREADS];
 pthread_t threads[NUM_THREADS];		//identificadores de los hilos
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -169,14 +169,14 @@ class Procesador
 						{
 							if(indice != id)
 							{
-								if(pthread_mutex_trylock((vecProcs[indice])->getMutexCacheDat()) == 0)
+								if(pthread_mutex_trylock(vecProcs[indice].getMutexCacheDat()) == 0)
 								{
 								    //si el bloque esta en la caché
-								    if((vecProcs[indice])->getCacheInst()[4][numBloqueEnCache][0] == numBloqueEnMP)
+								    if(vecProcs[indice].getCacheInst()[4][numBloqueEnCache][0] == numBloqueEnMP)
 								    {
-								    	(vecProcs[indice])->getCacheInst()[5][numBloqueEnCache][0] = 0;  //se invalida   						
+								    	vecProcs[indice].getCacheInst()[5][numBloqueEnCache][0] = 0;  //se invalida   						
 								    }
-								    pthread_mutex_unlock((vecProcs[indice])->getMutexCacheInst());		//se libera cache remota
+								    pthread_mutex_unlock(vecProcs[indice].getMutexCacheInst());		//se libera cache remota
 								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); ++i)
 								    {
 								        for(int j = 0; j < 4; ++j)
@@ -208,6 +208,7 @@ class Procesador
 		    }
 		}
 		
+		//no se usa
 		//metodo poco util
 		void resolverFalloDeCacheDat(int pNumBloqEnMP)
 		{
@@ -371,6 +372,7 @@ class Procesador
 			return instruccion;
 		}
 		
+		//no se usa
 		//obtiene el dato
 		int obtenerDato(int pDireccion)
 		{
