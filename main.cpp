@@ -45,20 +45,28 @@ class Procesador
 {
 	private:
 		long id;                    //identificador del nucleo
-	    int regsPC[34];             //vector con el PC, los 32 registros generales, y el RL
-	    int* pointerRegsPC = regsPC;
-	    int cacheInst[96];     //matriz que representa la cache de instrucciones, tridimensional (6*4*4) porque cada palabra es de cuatro enteros
-	    int* pointerCacheInst = cacheInst;
-	    int cacheDat[24];         //matriz que representa la cache de datos, no es tridimensional (6*4) porque cada 
-	                                //dato en una direccion se interpreta internamente como un solo entero
-	    int* pointerCacheDat = cacheDat;
+		int idHilillo;				//identificador del hilillo actualmente cargado
 	    int estadoHilillo;          //tiene un 0 si no ha comenzado su ejecucion, un 1 si esta en espera, un 2 si esta corriendo, y un 3 si ya termino
 	    int ciclosUsados;	
-		pthread_mutex_t mutexCacheInstLocal;
-		pthread_mutex_t mutexCacheDatLocal;
 		int quantum;
+		
+		struct Instruccion
+		{
+			int codigoOEtiqOValid;
+			int rf1;
+			int rd;
+			int rf2Oinmediato;
+		};
 	
 	public:
+		int regsPC[34];             //vector con el PC, los 32 registros generales, y el RL
+		Instruccion cacheInst[6][4];     //matriz que representa la cache de instrucciones, bidimensional (6*4) porque cada instruccion es un elemento
+									   //de la matriz
+		int cacheDat[6][4];         //matriz que representa la cache de datos, no es tridimensional (6*4) porque cada 
+	                                //dato en una direccion se interpreta internamente como un solo entero
+	    pthread_mutex_t mutexCacheInstLocal = PTHREAD_MUTEX_INITIALIZER;
+		pthread_mutex_t mutexCacheDatLocal = PTHREAD_MUTEX_INITIALIZER;
+		
 		Procesador(int pID)
 		{
 		    id = pID;
@@ -88,13 +96,8 @@ class Procesador
 		{
 			for(int i = 0; i < 34; ++i)
 			{
-				*(pointerRegsPC + i) = pRegsPC[i];
+				regsPC[i] = pRegsPC[i];
 			}
-		}
-		
-		int* getPointerRegsPC()
-		{
-			return pointerRegsPC;
 		}
 		
 		void setQuantum(int p_quantum)
@@ -117,32 +120,6 @@ class Procesador
 		    return ciclosUsados;
 		}
 		
-		void setCacheInst(int* p_cacheInst)
-		{
-			for(int i = 0; i < 34; ++i)
-			{
-		    	*(pointerCacheInst + i) = *(p_cacheInst + i);
-			}
-		}
-		
-		int* getPointerCacheInst()
-		{
-		    return pointerCacheInst;
-		}
-		
-		void setCacheDat(int* p_cacheDat)
-		{
-		    for(int i = 0; i < 34; ++i)
-			{
-		    	*(pointerCacheDat + i) = *(p_cacheDat + i);
-			}
-		}
-		
-		int* getPointerCacheDat()
-		{
-		    return pointerCacheDat;
-		}
-		
 		void setEstadoHilillo(int p_estado)
 		{
 		    estadoHilillo = p_estado;
@@ -153,19 +130,9 @@ class Procesador
 		    return estadoHilillo;
 		}
 		
-		pthread_mutex_t* getMutexCacheInst()
-		{
-			return &mutexCacheInstLocal;
-		}
-		
-		pthread_mutex_t* getMutexCacheDat()
-		{
-			return &mutexCacheDatLocal;
-		}
-		
 		void resolverFalloDeCacheInstr()
 		{
-		    int numBloqueEnMP = ((*(pointerRegsPC + 0)) / 16);
+		    int numBloqueEnMP = (regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
 		    int direccionEnArregloMPInstr = (numBloqueEnMP * 16) - 384;
 		    bool sentinela = false;
@@ -178,33 +145,35 @@ class Procesador
 					{
 						for(int indice = 0; indice < NUM_THREADS; ++indice)
 						{
-							if(indice != id)
+							if(((long)indice) != id)
 							{
-								if(pthread_mutex_trylock(vecProcs[indice].getMutexCacheDat()) == 0)
+								if(pthread_mutex_trylock(&(vecProcs[indice].mutexCacheInstLocal)) == 0)
 								{
 								    //si el bloque esta en la caché
 								    //aritmetica de punteros cacheInst[4][numBloqueEnCache][0] es igual a 
 								    //cacheInst[(indice1*(tamañoIndice1*tamañoIndice3))+(indice2*tamañoIndice3)+indice3]
 								    //en el caso de modelar una matriz tridimensional como un arreglo unidimensional contiguo
-								    if(*(vecProcs[indice].getPointerCacheInst() + ((4*(6*4))+(numBloqueEnCache*4)+0)) == numBloqueEnMP)
+								    if(vecProcs[indice].cacheInst[4][numBloqueEnCache].codigoOEtiqOValid == numBloqueEnMP)
 								    {
-								    	*(vecProcs[indice].getPointerCacheInst() + ((5*(6*4))+(numBloqueEnCache*4)+0)) = 0;  //se invalida   						
+								    	vecProcs[indice].cacheInst[5][numBloqueEnCache].codigoOEtiqOValid = 0;  //se invalida   						
 								    }
-								    pthread_mutex_unlock(vecProcs[indice].getMutexCacheInst());		//se libera cache remota
-								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); ++i)
+								    pthread_mutex_unlock(&(vecProcs[indice].mutexCacheInstLocal));		//se libera cache remota
+								    for(int i = direccionEnArregloMPInstr; i < (direccionEnArregloMPInstr + 16); i += 4)
 								    {
-								        for(int j = 0; j < 4; ++j)
-								        {
-					            			cacheInst[((i/4)*(6*4))+(numBloqueEnCache*4)+j] = memPInst[i];
-								        }
+					            		cacheInst[i][numBloqueEnCache].codigoOEtiqOValid = memPInst[i];
+					            		cacheInst[i][numBloqueEnCache].rf1 = memPInst[i+1];
+					            		cacheInst[i][numBloqueEnCache].rd = memPInst[i+2];
+					            		cacheInst[i][numBloqueEnCache].rf2Oinmediato = memPInst[i+3];
 								    }
-								    cacheInst[(4*(6*4))+(numBloqueEnCache*4)+0] = numBloqueEnMP;
-									cacheInst[(5*(6*4))+(numBloqueEnCache*4)+0] = 1;
+								    cacheInst[4][numBloqueEnCache].codigoOEtiqOValid = numBloqueEnMP;
+									cacheInst[5][numBloqueEnCache].codigoOEtiqOValid = 1;
+									/*
 									//se simulan los 28 ciclos que toma resolver un fallo de cache
 									for(int d = 0; d < 28; ++d)
 									{ 
 										pthread_barrier_wait(&barrera1);
 									}
+									*/
 									sentinela = true;
 									ciclosUsados += 28;
 								}
@@ -228,7 +197,7 @@ class Procesador
 		    int numBloqueEnMP = (regsPC[0] / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
 		    //si el bloque no esta en la caché
-		    if(cacheInst[(4*(6*4))+(numBloqueEnCache*4)+0] != numBloqueEnMP)
+		    if(cacheInst[4][numBloqueEnCache].codigoOEtiqOValid != numBloqueEnMP)
 		    {
 		        numBloqueEnCache = -1;						
 		    }
@@ -241,7 +210,7 @@ class Procesador
 			int numBloqueEnMP = (pDireccion / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
 		    //si el bloque no esta en la caché
-		    if(cacheDat[(4*4)+numBloqueEnCache] != numBloqueEnMP)
+		    if(cacheDat[4][numBloqueEnCache] != numBloqueEnMP)
 		    {
 		        numBloqueEnCache = -1;
 		    }
@@ -251,7 +220,7 @@ class Procesador
 		int verificarValidezBloqCacheDat(int pNumBloqEnCache)
 		{
 			int retorno = 0;
-			if(cacheDat[(5*4)+pNumBloqEnCache] == 1)
+			if(cacheDat[5][pNumBloqEnCache] == 1)
 			{
 				retorno = 1;
 			}
@@ -261,7 +230,7 @@ class Procesador
 		int verificarValidezBloqCacheInst(int pNumBloqEnCache)
 		{
 			int retorno = 0;
-			if(cacheInst[(5*(6*4))+(pNumBloqEnCache*4)+0] == 1)
+			if(cacheInst[5][pNumBloqEnCache].codigoOEtiqOValid == 1)
 			{
 				retorno = 1;
 			}
@@ -291,21 +260,16 @@ class Procesador
 		    return numPal;
 		}
 		
-		int* obtenerInstruccionDeCache()
+		Instruccion obtenerInstruccionDeCache()
 		{
-			static int instruccion[4];	
-			instruccion[0] = -1;	//retornara un -1 si la instrucción no se encuentra en la cache de instrucciones
-			int* instruccionPointer;
+			Instruccion instruccion;	
+			instruccion.codigoOEtiqOValid = -1;	//retornara un -1 si la instrucción no se encuentra en la cache de instrucciones
 			int numeroBloq = buscarBloqEnCacheInstr();
 			int numeroPal;
 			if(numeroBloq != -1)
 			{
 			    numeroPal = buscarPalEnCacheInstr();
-			    instruccionPointer = &(cacheInst[(numeroPal*(6*4))+(numeroBloq*4)+0]);
-			    for(int i = 0; i < 4; ++i)
-			    {
-			    	instruccion[i] = *(instruccionPointer + i);
-			    }
+			    instruccion = cacheInst[numeroPal][numeroBloq];
 			}
 			return instruccion;
 		}
@@ -314,26 +278,21 @@ class Procesador
 		{
 		    int dato = -1;          //devolvera un -1 si el bloque no esta en la cache o si esta invalido
 		    int numBloqEnCache = (pBloqEnMP % 4);
-		    if((cacheDat[(5*4)+numBloqEnCache] == 1) && (cacheDat[(4*4)+numBloqEnCache] == pBloqEnMP))
+		    if((cacheDat[5][numBloqEnCache] == 1) && (cacheDat[4][numBloqEnCache] == pBloqEnMP))
 		    {
-		        dato = cacheDat[(pNumPal*4)+numBloqEnCache];
+		        dato = cacheDat[pNumPal][numBloqEnCache];
 		    }
 		    return dato;
 		}
 		
 		//obtiene la instrucción que indique el PC
-		int* obtenerInstruccion()
+		Instruccion obtenerInstruccion()
 		{
-			static int instruccion[4];		//contendra la instrucción que se necesita
-			int* instruccionPointer = obtenerInstruccionDeCache();
-			while(*(instruccionPointer + 0) == -1)
+			Instruccion instruccion = obtenerInstruccionDeCache();
+			while(instruccion.codigoOEtiqOValid == -1)
 			{
 			    resolverFalloDeCacheInstr();
-			    instruccionPointer = obtenerInstruccionDeCache();
-			}
-			for(int i = 0; i < 4; ++i)
-			{
-				instruccion[i] = *(instruccionPointer + i);
+			    instruccion = obtenerInstruccionDeCache();
 			}
 			return instruccion;
 		}
@@ -344,11 +303,11 @@ class Procesador
 		*/
 		void correrInstruccion() 
 		{
-			int* palabra = obtenerInstruccion();
-		    int v1 = *(palabra + 0);
-		    int v2 = *(palabra + 1);
-		    int v3 = *(palabra + 2);
-		    int v4 = *(palabra + 3);
+			Instruccion instruccion = obtenerInstruccion();
+		    int v1 = instruccion.codigoOEtiqOValid;
+		    int v2 = instruccion.rf1;
+		    int v3 = instruccion.rd;
+		    int v4 = instruccion.rf2Oinmediato;
 		
 		    switch (v1) 
 		    {
@@ -389,6 +348,96 @@ class Procesador
 		            FIN();
 		            break;
 		    }
+		}
+		
+		//carga un hilillo en un hilo para ser ejecutado
+		void cargarContexto()
+		{
+			
+			idHilillo = colaHilillos[36];
+			setQuantum(QUANTUM);
+			setEstadoHilillo(colaHilillos[35]);
+			setCiclos(colaHilillos[34]);
+			setRegsPC(colaHilillos);
+
+		}
+		
+		void sacarContexto()
+		{
+			matrizHilillos[idHilillo][34] = getCiclos();
+			if(estadoHilillo != 3)
+			{
+				matrizHilillos[idHilillo][35] = 1;
+			}
+			else
+			{
+				matrizHilillos[idHilillo][35] = 3;
+			}
+			for(int f = 0; f < 34; ++f)
+			{
+				matrizHilillos[idHilillo][f] = regsPC[f];
+			}
+		}
+		
+		void correr()
+		{
+			int indiceHililloActual = 0;
+			int it = 0;
+			bool proximoHilo = false;
+			//el hilo correra hasta que no hayan mas hilillos en espera
+			while(colaHilillos[0] != -1)
+			{
+				//inicia zona critica
+				pthread_mutex_lock(&mutex);
+					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
+					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
+					{
+						if(colaHilillos[35] == 0)
+						{
+							time(&tiempoInicio);
+							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
+						}
+						colaHilillos[35] = 2;
+						cargarContexto();
+						indiceHililloActual = colaHilillos[36];
+						it = indiceHililloActual + 1;
+						while((it != indiceHililloActual) && !proximoHilo)
+						{
+							if(it >= NUM_HILILLOS)
+							{
+								it = 0;
+							}
+							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
+							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
+							{
+								for(int r = 0; r < 37; ++r)
+								{
+									colaHilillos[r] = matrizHilillos[it][r];
+								}
+								proximoHilo = true;
+							}
+							else
+							{
+								++it;
+							}
+						}
+						if((it == indiceHililloActual) && !proximoHilo)
+						{
+							colaHilillos[0] = -1;
+						}
+					}
+				pthread_mutex_unlock(&mutex);
+				//termina zona critica
+				while((quantum > 0) && (estadoHilillo != 3))
+				{
+					correrInstruccion();
+				}
+				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
+				//pthread_barrier_wait(&barrera2);
+				pthread_mutex_lock(&mutex);
+					sacarContexto();
+				pthread_mutex_unlock(&mutex);
+			}
 		}
 		
 		bool esRegistroValido(int RX) 
@@ -549,7 +598,7 @@ class Procesador
 					if(verificarValidezBloqCacheDat(numBloqCache) == 1)
 					{
 						numPal = buscarPalEnCacheDat(direccion);
-						regsPC[RX + 1] = cacheDat[(numPal*4)+numBloqCache];
+						regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 					}
 					else
 					{
@@ -570,18 +619,21 @@ class Procesador
 						numPal = (direcBloqMP % 16) / 4;
 						for(int i = direcBloqMP; i < (direcBloqMP + 16); i += 4)
 						{
-							cacheDat[(numPal*4)+numBloqCache] = memPDatos[i / 4];
+							cacheDat[numPal][numBloqCache] = memPDatos[i / 4];
 						}
+						/*
+						//simula sincronizacion de reloj
 						for(int z = 0; z < 28; ++z)
 						{
 							pthread_barrier_wait(&barrera1);
 						}
+						*/
 						pthread_mutex_unlock(&bus);
 						numPal = buscarPalEnCacheDat(direccion);
 						if(esRegDestinoValido(RX))
 						{
 							//carga el dato de la cache de datos al registro indicado
-							regsPC[RX + 1] = cacheDat[(numPal*4)+numBloqCache];
+							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
 							regsPC[0] += 4;
 						}
@@ -640,21 +692,22 @@ class Procesador
 					{
 						if(((long)g) != id)
 						{
-							if(pthread_mutex_trylock(vecProcs[g].getMutexCacheDat()) == 0)
+							if(pthread_mutex_trylock(&(vecProcs[g].mutexCacheDatLocal)) == 0)
 							{
 								numBloqCache = vecProcs[g].buscarBloqEnCacheDat(direccion);
 								//si bloque se encuentra en cache
 								if(numBloqCache != -1)
 								{
-									*(vecProcs[g].getPointerCacheDat() + ((5*4)+numBloqCache)) = 0;
+									//se invalida bloque en cache remota
+									vecProcs[g].cacheDat[5][numBloqCache] = 0;
 									//liberar cache remota
-									pthread_mutex_unlock((vecProcs[g]).getMutexCacheDat());
+									pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
 									ciclosUsados++;
 								}
 								else
 								{
 									//liberar cache remota
-									pthread_mutex_unlock((vecProcs[g]).getMutexCacheDat());
+									pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
 								}
 							}
 							else
@@ -670,16 +723,19 @@ class Procesador
 						{
 							sentinela = true;
 							//copiar dato en registro a palabra en cache de datos
-							cacheDat[(numPal*4)+numBloqCache] = regsPC[RX + 1];
+							cacheDat[numPal][numBloqCache] = regsPC[RX + 1];
 							numPalMP = (direccion / 4);
 							//copiar palabra de cache de datos a memoria principal de datos
-							memPDatos[numPalMP] = cacheDat[(numPal*4)+numBloqCache];
+							memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
 							retorno = 1;
 							regsPC[0] += 4;
+							/*
+							//simula los ciclos necesarios para copiar una palabra a MP
 							for(int y = 0; y < 7; ++y)
 							{
 								pthread_barrier_wait(&barrera1);
 							}
+							*/
 							ciclosUsados += 7;
 							pthread_mutex_unlock(&bus);
 							ciclosUsados++;
@@ -734,154 +790,14 @@ class Procesador
 };
 //fin clase Procesador
 
-void sacarContexto(int pNumNucleo)
-{
-	int* regsPCTemp;
-	switch(pNumNucleo)
-	{
-		case 0:
-			regsPCTemp = (vecProcs[0]).getPointerRegsPC();
-			for(int j = 0; j < NUM_HILILLOS; ++j)
-			{
-				if((vecProcs[0]).getId() == matrizHilillos[j][36])
-				{
-					matrizHilillos[j][34] += (vecProcs[0]).getCiclos();
-					if((vecProcs[0]).getEstadoHilillo() != 3)
-					{
-						matrizHilillos[j][35] = 1;
-					}
-					else
-					{
-						matrizHilillos[j][35] = 3;
-					}
-					for(int f = 0; f < 34; ++f)
-					{
-						matrizHilillos[j][f] = regsPCTemp[f];
-					}
-				}
-			}
-			break;
-		case 1:
-			regsPCTemp = (vecProcs[1]).getPointerRegsPC();
-			for(int j = 0; j < NUM_HILILLOS; ++j)
-			{
-				if((vecProcs[1]).getId() == matrizHilillos[j][36])
-				{
-					matrizHilillos[j][34] += (vecProcs[1]).getCiclos();
-					if((vecProcs[1]).getEstadoHilillo() != 3)
-					{
-						matrizHilillos[j][35] = 1;
-					}
-					else
-					{
-						matrizHilillos[j][35] = 3;
-					}
-					for(int f = 0; f < 34; ++f)
-					{
-						matrizHilillos[j][f] = regsPCTemp[f];
-					}
-				}
-			}
-			break;
-		case 2:
-			regsPCTemp = (vecProcs[2]).getPointerRegsPC();
-			for(int j = 0; j < NUM_HILILLOS; ++j)
-			{
-				if((vecProcs[2]).getId() == matrizHilillos[j][36])
-				{
-					matrizHilillos[j][34] += (vecProcs[2]).getCiclos();
-					if((vecProcs[2]).getEstadoHilillo() != 3)
-					{
-						matrizHilillos[j][35] = 1;
-					}
-					else
-					{
-						matrizHilillos[j][35] = 3;
-					}
-					for(int f = 0; f < 34; ++f)
-					{
-						matrizHilillos[j][f] = regsPCTemp[f];
-					}
-				}
-			}
-			break;
-	}
-}
-
-//carga un hilillo en un hilo para ser ejecutado
-void cargarContexto(int pNumNucleo)
-{
-	int* regsPCTemp2;
-	switch(pNumNucleo)
-	{
-		case 0:
-			(vecProcs[0]).setId(colaHilillos[36]);
-			(vecProcs[0]).setQuantum(QUANTUM);
-			(vecProcs[0]).setEstadoHilillo(colaHilillos[35]);
-			(vecProcs[0]).setCiclos(colaHilillos[34]);
-			(vecProcs[0]).setRegsPC(colaHilillos);
-			regsPCTemp2 = vecProcs[0].getPointerRegsPC();
-			std::cout << "PC y Registros Proc0:" <<std::endl;
-			for(int i = 0; i < 37; ++i)
-			{
-				std::cout << *(regsPCTemp2 + i) << "\t";
-			}
-			std::cout <<std::endl;
-			break;
-		case 1:
-			(vecProcs[1]).setId(colaHilillos[36]);
-			(vecProcs[1]).setQuantum(QUANTUM);
-			(vecProcs[1]).setEstadoHilillo(colaHilillos[35]);
-			(vecProcs[1]).setCiclos(colaHilillos[34]);
-			(vecProcs[1]).setRegsPC(colaHilillos);
-			regsPCTemp2 = vecProcs[1].getPointerRegsPC();
-			std::cout << "PC y Registros Proc1:" <<std::endl;
-			for(int i = 0; i < 37; ++i)
-			{
-				std::cout << *(regsPCTemp2 + i) << "\t";
-			}
-			std::cout <<std::endl;
-			break;
-		case 2:
-			(vecProcs[2]).setId(colaHilillos[36]);
-			(vecProcs[2]).setQuantum(QUANTUM);
-			(vecProcs[2]).setEstadoHilillo(colaHilillos[35]);
-			(vecProcs[2]).setCiclos(colaHilillos[34]);
-			(vecProcs[2]).setRegsPC(colaHilillos);
-			regsPCTemp2 = vecProcs[2].getPointerRegsPC();
-			std::cout << "PC y Registros Proc2:" <<std::endl;
-			for(int i = 0; i < 37; ++i)
-			{
-				std::cout << *(regsPCTemp2 + i) << "\t";
-			}
-			std::cout <<std::endl;
-			break;
-	}
-}
-
-//indica si aun existen hilillos en espera de ser ejecutados
-bool buscarHilillosEnEspera()
-{
-	bool sentinela = false; //vigila si ya se encontro un hilillo en espera
-	//mientras no se haya encontrado un hilillo en espera y la celda actual pertenezca a la matriz de hilillos
-	for(int i = 0; i < NUM_HILILLOS && !sentinela; ++i)
-	{
-		if(matrizHilillos[i][35] == 1)
-		{
-			sentinela = true;
-		}
-	}
-	return sentinela;
-}
-
-void* correr(void*)
+void* ejecutar(void*)
 {
 	int indiceHililloActual;
 	int it;
 	bool proximoHilo = false;
+	int indice = 0;
 	//encontrar el numero de procesador actual
 	int numNucleo;
-	std::vector<int> colaTemp(37);
 	for(int i = 0; i < NUM_THREADS; ++i)
 	{
 		if( 0 != pthread_equal(pthread_self(), threads[i]))
@@ -910,180 +826,17 @@ void* correr(void*)
 			break;
 	}
 	
-	pthread_barrier_wait(&barrera2);
-	switch(numNucleo)
+	while(indice < NUM_THREADS)
 	{
-		case 0:
-			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(colaHilillos[0] != -1)
-			{
-				//inicia zona critica
-				pthread_mutex_lock(&mutex);
-					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
-					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
-					{
-						if(colaHilillos[35] == 0)
-						{
-							time(&tiempoInicio);
-							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
-						}
-						colaHilillos[35] = 2;
-						cargarContexto(numNucleo);
-						indiceHililloActual = colaHilillos[36];
-						it = indiceHililloActual + 1;
-						while((it != indiceHililloActual) && !proximoHilo)
-						{
-							if(it >= NUM_HILILLOS)
-							{
-								it = 0;
-							}
-							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
-							{
-								for(int r = 0; r < 37; ++r)
-								{
-									colaTemp.push_back(matrizHilillos[it][r]);
-								}
-								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
-								proximoHilo = true;
-							}
-							else
-							{
-								++it;
-							}
-						}
-						if((it == indiceHililloActual) && !proximoHilo)
-						{
-							colaHilillos[0] = -1;
-						}
-					}
-				pthread_mutex_unlock(&mutex);
-				//termina zona critica
-				while(((vecProcs[0]).getQuantum() > 0) && ((vecProcs[0]).getEstadoHilillo() != 3))
-				{
-					(vecProcs[0]).correrInstruccion();
-				}
-				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
-				pthread_barrier_wait(&barrera2);
-				pthread_mutex_lock(&mutex);
-					sacarContexto(numNucleo);
-				pthread_mutex_unlock(&mutex);
-			}
+		if(((long)(vecProcs[indice].getId())) == numNucleo)
+		{
+			vecProcs[indice].correr();
 			break;
-		case 1:
-			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(colaHilillos[0] != -1)
-			{
-				//inicia zona critica
-				pthread_mutex_lock(&mutex);
-					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
-					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
-					{
-						if(colaHilillos[35] == 0)
-						{
-							time(&tiempoInicio);
-							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
-						}
-						colaHilillos[35] = 2;
-						cargarContexto(numNucleo);
-						indiceHililloActual = colaHilillos[36];
-						it = indiceHililloActual + 1;
-						while((it != indiceHililloActual) && !proximoHilo)
-						{
-							if(it >= NUM_HILILLOS)
-							{
-								it = 0;
-							}
-							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
-							{
-								for(int r = 0; r < 37; ++r)
-								{
-									colaTemp.push_back(matrizHilillos[it][r]);
-								}
-								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
-								proximoHilo = true;
-							}
-							else
-							{
-								++it;
-							}
-						}
-						if((it == indiceHililloActual) && !proximoHilo)
-						{
-							colaHilillos[0] = -1;
-						}
-					}
-				pthread_mutex_unlock(&mutex);
-				//termina zona critica
-				while(((vecProcs[1]).getQuantum() > 0) && ((vecProcs[1]).getEstadoHilillo() != 3))
-				{
-					(vecProcs[1]).correrInstruccion();
-				}
-				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
-				pthread_barrier_wait(&barrera2);
-				pthread_mutex_lock(&mutex);
-					sacarContexto(numNucleo);
-				pthread_mutex_unlock(&mutex);
-			}
-			break;
-		case 2:
-			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(colaHilillos[0] != -1)
-			{
-				//inicia zona critica
-				pthread_mutex_lock(&mutex);
-					//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
-					if(colaHilillos[35] == 0 || colaHilillos[35] == 1)
-					{
-						if(colaHilillos[35] == 0)
-						{
-							time(&tiempoInicio);
-							tiemposXHilillo[colaHilillos[36]] = tiempoInicio;
-						}
-						colaHilillos[35] = 2;
-						cargarContexto(numNucleo);
-						indiceHililloActual = colaHilillos[36];
-						it = indiceHililloActual + 1;
-						while((it != indiceHililloActual) && !proximoHilo)
-						{
-							if(it >= NUM_HILILLOS)
-							{
-								it = 0;
-							}
-							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
-							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
-							{
-								for(int r = 0; r < 37; ++r)
-								{
-									colaTemp.push_back(matrizHilillos[it][r]);
-								}
-								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
-								proximoHilo = true;
-							}
-							else
-							{
-								++it;
-							}
-						}
-						if((it == indiceHililloActual) && !proximoHilo)
-						{
-							colaHilillos[0] = -1;
-						}
-					}
-				pthread_mutex_unlock(&mutex);
-				//termina zona critica
-				while(((vecProcs[2]).getQuantum() > 0) && ((vecProcs[2]).getEstadoHilillo() != 3))
-				{
-					(vecProcs[2]).correrInstruccion();
-				}
-				//como se acabo el quantum o se termino de ejecutar el hilillo, entonces se saca el contexto
-				pthread_barrier_wait(&barrera2);
-				pthread_mutex_lock(&mutex);
-					sacarContexto(numNucleo);
-				pthread_mutex_unlock(&mutex);
-			}
-			break;
+		}
+		else
+		{
+			++indice;
+		}
 	}
 }
 
@@ -1096,7 +849,7 @@ int crearNucleos()
     //pthread_mutex_init(&bus, NULL);
     for(int i = 0; i < NUM_THREADS; ++i)
     {
-		rc = pthread_create(&threads[i],NULL,correr, NULL);
+		rc = pthread_create(&threads[i],NULL,ejecutar, NULL);
 		if(rc)
 		{
 	    	std::cout << "Error: imposible crear el hilo" <<std::endl;
@@ -1148,8 +901,7 @@ void cargarHilillos()
 {
 	int v1,v2,v3,v4;
 	int direccion;		//indica la proxima dirección en donde guardar una instrucción
-	int contadorInstrucciones;	//indica la cantidad de instrucciones ingresadas en memoria actualmente
-	std::vector<int> colaTemp(37);
+	int contadorInstrucciones = 0;	//indica la cantidad de instrucciones ingresadas en memoria actualmente
 	for(int i = 0; i < NUM_HILILLOS; ++i)
 	{
 		bool primerInstr = true;
@@ -1182,13 +934,27 @@ void cargarHilillos()
 				memPInst[(PC + 3) - 384] = v4;
 				contadorInstrucciones++;
 			}
-			//vector temporal con el proximo hilillo a correr
+			/*
+			std::cout << "matrizHilillos[0]:" <<std::endl;
+			for(int u = 0; u < 37; ++u)
+			{
+				std::cout << matrizHilillos[0][u] << "\t";
+			}
+			std::cout <<std::endl;
+			*/
+			//poner primer hilo en espera
 			for(int j = 0; j < 37; ++j)
 			{
-				colaTemp.push_back(matrizHilillos[0][j]);
+				colaHilillos[j] = matrizHilillos[0][j];
 			}
-			//poner primer hilo en espera
-			colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
+			/*
+			std::cout << "Cola hilillos:" <<std::endl;
+			for(int u = 0; u < 37; ++u)
+			{
+				std::cout << colaHilillos[u] << "\t";
+			}
+			std::cout <<std::endl;
+			*/
 		}
 		else
 		{
@@ -1275,6 +1041,14 @@ void cargarHilillos()
 			}
 		}
 	}
+	/*
+	std::cout << "Cola hilillos:" <<std::endl;
+	for(int u = 0; u < 37; ++u)
+	{
+		std::cout << colaHilillos[u] << "\t";
+	}
+	std::cout <<std::endl;
+	*/
 }
 
 void imprimirMPInstr()
