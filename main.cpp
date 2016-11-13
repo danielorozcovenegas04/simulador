@@ -5,7 +5,7 @@
 #include <time.h>
 #include <vector>
 
-#define NUM_THREADS 1
+#define NUM_THREADS 3
 #define NUM_HILILLOS 5	//numero de hilillos a ejecutar
 #define TAMA_MPInst 640 //son 640 celdas porque son 40 bloques y a cada bloque le caben 4 palabras, una palabra es una instruccion, 
 						//y cada palabra tiene 4 enteros
@@ -18,13 +18,13 @@ int memPDatos[TAM_MPDat];		//vector que representa la memoria principal comparti
 						
 int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
 						
-int matrizHilillos[NUM_HILILLOS][37];		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
+std::vector< std::vector<int> > matrizHilillos(NUM_HILILLOS, std::vector<int>(37));		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
 								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
 								
 time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
 											//hilillo se comenzo a ejecutar
 								
-int* colaHilillos;		//representa el proximo hilillo en espera de ser cargado a algun procesador
+std::vector<int> colaHilillos(37);		//representa el proximo hilillo en espera de ser cargado a algun procesador
 
 time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
 time_t tiempoFin;				//almacenará temporalmente el tiempo en que termino cada hilillo
@@ -34,8 +34,8 @@ class Procesador;
 std::vector<Procesador> vecProcs;  //vector de procesadores o hilos
 pthread_t threads[NUM_THREADS];		//identificadores de los hilos
 
-pthread_mutex_t mutex;
-pthread_mutex_t bus;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t bus = PTHREAD_MUTEX_INITIALIZER;
 pthread_barrier_t barrera1;
 pthread_barrier_t barrera2;
 
@@ -45,7 +45,7 @@ class Procesador
 {
 	private:
 		long id;                    //identificador del nucleo
-	    int regsPC[34];             //vector con los 32 registros generales, el RL y el PC
+	    int regsPC[34];             //vector con el PC, los 32 registros generales, y el RL
 	    int* pointerRegsPC = regsPC;
 	    int cacheInst[96];     //matriz que representa la cache de instrucciones, tridimensional (6*4*4) porque cada palabra es de cuatro enteros
 	    int* pointerCacheInst = cacheInst;
@@ -84,11 +84,11 @@ class Procesador
 		    return id;
 		}
 		
-		void setRegsPC(int* pRegsPC)
+		void setRegsPC(std::vector<int> &pRegsPC)
 		{
 			for(int i = 0; i < 34; ++i)
 			{
-				*(pointerRegsPC + i) = *(pRegsPC + i);
+				*(pointerRegsPC + i) = pRegsPC[i];
 			}
 		}
 		
@@ -165,7 +165,7 @@ class Procesador
 		
 		void resolverFalloDeCacheInstr()
 		{
-		    int numBloqueEnMP = (regsPC[0] / 16);
+		    int numBloqueEnMP = ((*(pointerRegsPC + 0)) / 16);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);
 		    int direccionEnArregloMPInstr = (numBloqueEnMP * 16) - 384;
 		    bool sentinela = false;
@@ -881,6 +881,7 @@ void* correr(void*)
 	bool proximoHilo = false;
 	//encontrar el numero de procesador actual
 	int numNucleo;
+	std::vector<int> colaTemp(37);
 	for(int i = 0; i < NUM_THREADS; ++i)
 	{
 		if( 0 != pthread_equal(pthread_self(), threads[i]))
@@ -914,7 +915,7 @@ void* correr(void*)
 	{
 		case 0:
 			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(*colaHilillos != -1)
+			while(colaHilillos[0] != -1)
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
@@ -939,7 +940,11 @@ void* correr(void*)
 							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
 							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
 							{
-								colaHilillos = &(matrizHilillos[it][0]);
+								for(int r = 0; r < 37; ++r)
+								{
+									colaTemp.push_back(matrizHilillos[it][r]);
+								}
+								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
 								proximoHilo = true;
 							}
 							else
@@ -949,7 +954,7 @@ void* correr(void*)
 						}
 						if((it == indiceHililloActual) && !proximoHilo)
 						{
-							*colaHilillos = -1;
+							colaHilillos[0] = -1;
 						}
 					}
 				pthread_mutex_unlock(&mutex);
@@ -967,7 +972,7 @@ void* correr(void*)
 			break;
 		case 1:
 			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(*colaHilillos != -1)
+			while(colaHilillos[0] != -1)
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
@@ -992,7 +997,11 @@ void* correr(void*)
 							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
 							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
 							{
-								colaHilillos = &(matrizHilillos[it][0]);
+								for(int r = 0; r < 37; ++r)
+								{
+									colaTemp.push_back(matrizHilillos[it][r]);
+								}
+								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
 								proximoHilo = true;
 							}
 							else
@@ -1002,7 +1011,7 @@ void* correr(void*)
 						}
 						if((it == indiceHililloActual) && !proximoHilo)
 						{
-							*colaHilillos = -1;
+							colaHilillos[0] = -1;
 						}
 					}
 				pthread_mutex_unlock(&mutex);
@@ -1020,7 +1029,7 @@ void* correr(void*)
 			break;
 		case 2:
 			//el hilo correra hasta que no hayan mas hilillos en espera
-			while(*colaHilillos != -1)
+			while(colaHilillos[0] != -1)
 			{
 				//inicia zona critica
 				pthread_mutex_lock(&mutex);
@@ -1045,7 +1054,11 @@ void* correr(void*)
 							//si aún no ha comenzado a ejecutarse el hilillo indicado por el iterador o si esta en espera
 							if((matrizHilillos[it][35] == 0) || (matrizHilillos[it][35] == 1))
 							{
-								colaHilillos = &(matrizHilillos[it][0]);
+								for(int r = 0; r < 37; ++r)
+								{
+									colaTemp.push_back(matrizHilillos[it][r]);
+								}
+								colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
 								proximoHilo = true;
 							}
 							else
@@ -1055,7 +1068,7 @@ void* correr(void*)
 						}
 						if((it == indiceHililloActual) && !proximoHilo)
 						{
-							*colaHilillos = -1;
+							colaHilillos[0] = -1;
 						}
 					}
 				pthread_mutex_unlock(&mutex);
@@ -1079,8 +1092,8 @@ int crearNucleos()
     int rc;
     pthread_barrier_init(&barrera1,NULL,NUM_THREADS);
     pthread_barrier_init(&barrera2,NULL,NUM_THREADS);
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&bus, NULL);
+    //pthread_mutex_init(&mutex, NULL);
+    //pthread_mutex_init(&bus, NULL);
     for(int i = 0; i < NUM_THREADS; ++i)
     {
 		rc = pthread_create(&threads[i],NULL,correr, NULL);
@@ -1136,6 +1149,7 @@ void cargarHilillos()
 	int v1,v2,v3,v4;
 	int direccion;		//indica la proxima dirección en donde guardar una instrucción
 	int contadorInstrucciones;	//indica la cantidad de instrucciones ingresadas en memoria actualmente
+	std::vector<int> colaTemp(37);
 	for(int i = 0; i < NUM_HILILLOS; ++i)
 	{
 		bool primerInstr = true;
@@ -1168,8 +1182,13 @@ void cargarHilillos()
 				memPInst[(PC + 3) - 384] = v4;
 				contadorInstrucciones++;
 			}
+			//vector temporal con el proximo hilillo a correr
+			for(int j = 0; j < 37; ++j)
+			{
+				colaTemp.push_back(matrizHilillos[0][j]);
+			}
 			//poner primer hilo en espera
-			colaHilillos = &(matrizHilillos[0][0]);
+			colaHilillos = std::vector<int> (colaTemp.begin(), colaTemp.end());
 		}
 		else
 		{
