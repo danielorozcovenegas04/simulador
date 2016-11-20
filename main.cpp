@@ -41,6 +41,7 @@ pthread_mutex_t mutexCola = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexTiemposXHilillo = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t busInst = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t busDat = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexVecProcs = PTHREAD_MUTEX_INITIALIZER;
 pthread_barrier_t barrera1;
 pthread_barrier_t barrera2;
 
@@ -71,6 +72,7 @@ class Procesador
 	                                //dato en una direccion se interpreta internamente como un solo entero
 		pthread_mutex_t mutexCacheDatLocal = PTHREAD_MUTEX_INITIALIZER;
 		pthread_mutex_t mutexCacheInstLocal = PTHREAD_MUTEX_INITIALIZER;
+		pthread_mutex_t mutexRegsPC = PTHREAD_MUTEX_INITIALIZER;
 		
 		Procesador(int pID)
 		{
@@ -99,10 +101,12 @@ class Procesador
 		
 		void setRegsPC(std::vector<int> &pRegsPC)
 		{
-			for(int i = 0; i < 34; ++i)
-			{
-				regsPC[i] = pRegsPC[i];
-			}
+			pthread_mutex_lock(&mutexRegsPC);
+				for(int i = 0; i < 34; ++i)
+				{
+					regsPC[i] = pRegsPC[i];
+				}
+			pthread_mutex_unlock(&mutexRegsPC);
 		}
 		
 		void setQuantum(int p_quantum)
@@ -154,7 +158,9 @@ class Procesador
 		
 		void resolverFalloDeCacheInstr()
 		{
-		    int numBloqueEnMP = (regsPC[0] / 16);
+			pthread_mutex_lock(&mutexRegsPC);
+		    	int numBloqueEnMP = (regsPC[0] / 16);
+		    pthread_mutex_unlock(&mutexRegsPC);
 		    int numBloqueEnCache = buscarBloqEnCacheInstr();
 		    int direccionEnArregloMPInstr = (numBloqueEnMP * 16) - 384;
 		    bool sentinela = false;		//indica si ya se pudo cargar el bloque de MP a cache
@@ -194,7 +200,9 @@ class Procesador
 		//busca el bloque en la cache de instrucciones y retorna el número de bloque en caché de estar valido, en caso de no estar o estar invalido retorna un -1
 		int buscarBloqEnCacheInstr()
 		{
-		    int numBloqueEnMP = (regsPC[0] / 16);
+			pthread_mutex_lock(&mutexRegsPC);
+		    	int numBloqueEnMP = (regsPC[0] / 16);
+		    pthread_mutex_unlock(&mutexRegsPC);
 		    int numBloqueEnCache = (numBloqueEnMP %  4);  //numero de bloque a retornar
 		    //si el bloque no esta en la caché
 		    if(cacheInst[4][numBloqueEnCache].codigoOEtiqOValid != numBloqueEnMP)
@@ -235,7 +243,9 @@ class Procesador
 		    //si el bloque esta en la cache
 		    if(pNumBloqEnCache != -1)
 		    {
-		        numPal = ((regsPC[0] % 16) /  4);
+		    	pthread_mutex_lock(&mutexRegsPC);
+		        	numPal = ((regsPC[0] % 16) /  4);
+		        pthread_mutex_unlock(&mutexRegsPC);
 		    }
 		    return numPal;
 		    
@@ -359,10 +369,14 @@ class Procesador
 			{
 				matrizHilillos[idHilillo][35] = 3;
 			}
-			for(int f = 0; f < 34; ++f)
-			{
-				matrizHilillos[idHilillo][f] = regsPC[f];
-			}
+			pthread_mutex_lock(&mutexRegsPC);
+				for(int f = 0; f < 34; ++f)
+				{
+					matrizHilillos[idHilillo][f] = regsPC[f];
+				}
+			pthread_mutex_unlock(&mutexRegsPC);
+			//pone RL en -1
+			matrizHilillos[idHilillo][33] = -1;
 		}
 		
 		void correr()
@@ -475,8 +489,10 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        regsPC[RX + 1] = regsPC[RY + 1] + n;    //Realiza el DADDI
-		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[RX + 1] = regsPC[RY + 1] + n;    //Realiza el DADDI
+			        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -492,8 +508,10 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        regsPC[RX + 1] = regsPC[RY + 1] + regsPC[RZ + 1];    //Realiza el DADDI
-		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[RX + 1] = regsPC[RY + 1] + regsPC[RZ + 1];    //Realiza el DADDI
+			        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -510,8 +528,10 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        regsPC[RX + 1] = regsPC[RY + 1] - regsPC[RZ + 1];    //Realiza el DADDI
-		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[RX + 1] = regsPC[RY + 1] - regsPC[RZ + 1];    //Realiza el DADDI
+			        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -527,8 +547,10 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        regsPC[RX + 1] = regsPC[RY + 1] * regsPC[RZ + 1];    //Realiza el DADDI
-		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[RX + 1] = regsPC[RY + 1] * regsPC[RZ + 1];    //Realiza el DADDI
+			        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -544,8 +566,10 @@ class Procesador
 		    //valido hay error
 		    if(esRegDestinoValido(RX) && esRegistroValido(RX) && esRegistroValido(RY))
 		    {
-		        regsPC[RX + 1] = regsPC[RY + 1] / regsPC[RZ + 1];    //Realiza el DADDI
-		        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[RX + 1] = regsPC[RY + 1] / regsPC[RZ + 1];    //Realiza el DADDI
+			        regsPC[0] += 4;                             //Suma 4 al PC para pasar a la siguiente instruccion
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -559,10 +583,12 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        regsPC[0] += 4;
-		        if(regsPC[RX + 1] == 0){
-		            regsPC[0] = regsPC[0] + 4*n;
-		        }
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[0] += 4;
+			        if(regsPC[RX + 1] == 0){
+			            regsPC[0] = regsPC[0] + 4*n;
+			        }
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -576,10 +602,12 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        regsPC[0] += 4;
-		        if(regsPC[RX + 1] != 0){
-		            regsPC[0] = regsPC[0] + 4*n;
-		        }
+		    	pthread_mutex_lock(&mutexRegsPC);
+			        regsPC[0] += 4;
+			        if(regsPC[RX + 1] != 0){
+			            regsPC[0] = regsPC[0] + 4*n;
+			        }
+			    pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		    	quantum--;
 		    	tick();		//simula un ciclo de reloj
@@ -600,7 +628,9 @@ class Procesador
 			bool sentinela = false;
 			if(esRegistroValido(RY))
 			{
-				direccion = n + regsPC[RY + 1];		//se determina la direccion donde estaría el dato
+				pthread_mutex_lock(&mutexRegsPC);
+					direccion = n + regsPC[RY + 1];		//se determina la direccion donde estaría el dato
+				pthread_mutex_unlock(&mutexRegsPC);
 			}
 			//mientras aun no se haya cargado el dato al registro
 			while(!sentinela)
@@ -616,7 +646,9 @@ class Procesador
 						if(verificarValidezBloqCacheDat(numBloqCache) == 1)
 						{
 							numPal = buscarPalEnCacheDat(direccion, numBloqCache);
-							regsPC[RX + 1] = cacheDat[numPal][numBloqCache];	//se carga el dato al registro
+							pthread_mutex_lock(&mutexRegsPC);
+								regsPC[RX + 1] = cacheDat[numPal][numBloqCache];	//se carga el dato al registro
+							pthread_mutex_unlock(&mutexRegsPC);
 						}
 						else	//si el bloque es invalido
 						{
@@ -650,9 +682,11 @@ class Procesador
 							//si el registro destino es valido
 							if(esRegDestinoValido(RX))
 							{
-								//carga el dato de la cache de datos al registro indicado
-								regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
-								regsPC[0] += 4;
+								pthread_mutex_lock(&mutexRegsPC);
+									//carga el dato de la cache de datos al registro indicado
+									regsPC[RX + 1] = cacheDat[numPal][numBloqCache];
+									regsPC[0] += 4;
+								pthread_mutex_unlock(&mutexRegsPC);
 							}
 							sentinela = true;		//se cargo dato de cache al registro
 							quantum--;
@@ -676,6 +710,24 @@ class Procesador
 		}
 		
 		/*
+		* Carga un dato de cache de datos al registro indicado, implementando un candado
+		*/
+		void LL(int RY, int RX, int n)
+		{
+			int dir = 0;
+			if(esRegistroValido(RY))
+			{
+				pthread_mutex_lock(&mutexRegsPC);
+					dir = n + regsPC[RY + 1];		//se determina la direccion donde estaría el dato
+				pthread_mutex_unlock(&mutexRegsPC);
+			}
+			pthread_mutex_lock(&mutexRegsPC);
+				regsPC[33] = dir;	//se guarda direccion en RL
+			pthread_mutex_unlock(&mutexRegsPC);
+			LW(RY, RX, n);		//se ejecuta el LW normal
+		}
+		
+		/*
 		* carga un dato del registro indicado a memoria en la dirección indicada
 		*/
 		void SW(int RY, int RX, int n)
@@ -692,7 +744,9 @@ class Procesador
 			//si registro fuente es valido
 			if(esRegistroValido(RY))
 			{
-				direccion = n + regsPC[RY + 1];		//se determina la dirección de memoria principal donde se guardará el dato
+				pthread_mutex_lock(&mutexRegsPC);
+					direccion = n + regsPC[RY + 1];		//se determina la dirección de memoria principal donde se guardará el dato
+				pthread_mutex_unlock(&mutexRegsPC);
 			}
 			//mientras no se haya guardado el dato en memoria principal
 			while(!sentinela)
@@ -715,43 +769,52 @@ class Procesador
 							//si no es nucleo local
 							if(((long)g) != id)
 							{
-								//si se tiene cache remota
-								if(pthread_mutex_trylock(&(vecProcs[g].mutexCacheDatLocal)) == 0)
-								{
-									//si se puede revisar la ultima cache remota
-									if(g == 2)
+								pthread_mutex_lock(&mutexVecProcs);
+									//si se tiene cache remota
+									if(pthread_mutex_trylock(&(vecProcs[g].mutexCacheDatLocal)) == 0)
 									{
-										cachesRemotasRevisadas = true;	
+										//si se puede revisar la ultima cache remota
+										if(g == 2)
+										{
+											cachesRemotasRevisadas = true;	
+										}
+										numBloqCache = vecProcs[g].buscarBloqEnCacheDat(direccion);
+										//si bloque se encuentra en cache
+										if(numBloqCache != -1)
+										{
+											//se invalida bloque en cache remota
+											vecProcs[g].cacheDat[5][numBloqCache] = 0;
+											//liberar cache remota
+											tick();		//simula un ciclo de reloj
+											pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
+											ciclosUsados++;
+											pthread_mutex_lock(&(vecProcs[g].mutexRegsPC));
+												//si el RL es igual a la direccion donde se guardara el dato
+												if(vecProcs[g].regsPC[33] == direccion)
+												{
+													vecProcs[g].regsPC[33] = -1;
+												}
+											pthread_mutex_unlock(&(vecProcs[g].mutexRegsPC));
+										}
+										else	//si el bloque no esta en cache remota
+										{
+											//liberar cache remota
+											tick();		//simula un ciclo de reloj
+											pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
+										}
 									}
-									numBloqCache = vecProcs[g].buscarBloqEnCacheDat(direccion);
-									//si bloque se encuentra en cache
-									if(numBloqCache != -1)
+									else	//si no se obtiene cache remota
 									{
-										//se invalida bloque en cache remota
-										vecProcs[g].cacheDat[5][numBloqCache] = 0;
-										//liberar cache remota
+										//uso de bus
 										tick();		//simula un ciclo de reloj
-										pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
+										pthread_mutex_unlock(&busDat);		//se libera el bus
+										ciclosUsados++;
+										//uso de cache local
+										tick();		//simula un ciclo de reloj
+										pthread_mutex_unlock(&mutexCacheDatLocal);
 										ciclosUsados++;
 									}
-									else	//si el bloque no esta en cache remota
-									{
-										//liberar cache remota
-										tick();		//simula un ciclo de reloj
-										pthread_mutex_unlock(&(vecProcs[g].mutexCacheDatLocal));
-									}
-								}
-								else	//si no se obtiene cache remota
-								{
-									//uso de bus
-									tick();		//simula un ciclo de reloj
-									pthread_mutex_unlock(&busDat);		//se libera el bus
-									ciclosUsados++;
-									//uso de cache local
-									tick();		//simula un ciclo de reloj
-									pthread_mutex_unlock(&mutexCacheDatLocal);
-									ciclosUsados++;
-								}
+								pthread_mutex_unlock(&mutexVecProcs);
 							}
 							else	//si es el nucleo actual
 							{
@@ -764,12 +827,14 @@ class Procesador
 							//si se revisaron  e invalidaron las otras caches
 							if(cachesRemotasRevisadas)
 							{
-								//copiar dato en registro a palabra en cache de datos
-								cacheDat[numPal][numBloqCache] = regsPC[RX + 1];
-								numPalMP = (direccion / 4);
-								//copiar palabra de cache de datos a memoria principal de datos
-								memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
-								regsPC[0] += 4;
+								pthread_mutex_lock(&mutexRegsPC);
+									//copiar dato en registro a palabra en cache de datos
+									cacheDat[numPal][numBloqCache] = regsPC[RX + 1];
+									numPalMP = (direccion / 4);
+									//copiar palabra de cache de datos a memoria principal de datos
+									memPDatos[numPalMP] = cacheDat[numPal][numBloqCache];
+									regsPC[0] += 4;
+								pthread_mutex_unlock(&mutexRegsPC);
 								///*
 								//simula los ciclos necesarios para copiar una palabra a MP
 								ticks(7);
@@ -794,6 +859,33 @@ class Procesador
 				}
 			}
 			tick();		//simula un ciclo de reloj
+		}
+		
+		/*
+		* carga un dato del registro indicado a memoria en la dirección indicada, implementando un candado
+		*/
+		void SC(int RY, int RX, int n)
+		{
+			int dir = 0;
+			if(esRegistroValido(RY))
+			{
+				pthread_mutex_lock(&mutexRegsPC);
+					dir = n + regsPC[RY + 1];		//se determina la direccion donde estaría el dato
+				pthread_mutex_unlock(&mutexRegsPC);
+			}
+			pthread_mutex_lock(&mutexRegsPC);
+				//si RL contiene la direccion donde se guardara el dato
+				if(regsPC[33] == dir)
+				{
+					SW(RY, RX, n);		//se ejecuta el Store modificado, con los RL = -1 en las invalidaciones
+					regsPC[33] = -1;	//se pone RL local igual a -1
+				}
+				else
+				{
+					regsPC[RX + 1] = 0;	//pone un 0 en el registro destino indicando que no se ejecuto el store
+					regsPC[33] = -1;	//se pone RL local igual a -1
+				}
+			pthread_mutex_unlock(&mutexRegsPC);
 		}
 		
 		/*
@@ -875,7 +967,7 @@ int inicio()
 	//mientras todos los hilillos no terminaron de ejecutarse
 	while(!hilillosTerminaron)
 	{		
-		int cantidadHilillosTerminados;
+		int cantidadHilillosTerminados = 0;
 		pthread_mutex_lock(&mutexMatrizHilillo);
 			for(int t = 0; t < NUM_HILILLOS; ++t)
 			{
