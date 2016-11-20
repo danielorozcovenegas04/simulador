@@ -7,25 +7,25 @@
 
 #define NUM_THREADS 3
 #define NUM_HILILLOS 5	//numero de hilillos a ejecutar
-#define TAMA_MPInst 640 //son 640 celdas porque son 40 bloques y a cada bloque le caben 4 palabras, una palabra es una instruccion, 
-						//y cada palabra tiene 4 enteros
-#define TAM_MPDat 96	//son 96 celdas pues son 24 bloques y a cada bloque le caben 4 datos, aunque se simula que cada dato son 4 bytes, 
-						//al usar enteros solo se necesita un entero para cada dato
-						
+#define TAMA_MPInst 640 //son 640 celdas porque son 40 bloques y a cada bloque le caben 4 palabras, una palabra es una instruccion,
+//y cada palabra tiene 4 enteros
+#define TAM_MPDat 96	//son 96 celdas pues son 24 bloques y a cada bloque le caben 4 datos, aunque se simula que cada dato son 4 bytes,
+//al usar enteros solo se necesita un entero para cada dato
+
 #define QUANTUM 40
 
 bool hilillosTerminaron = false;	//indica true cuando se terminaron de ejecutar todos los hilillos
 
 int memPDatos[TAM_MPDat];		//vector que representa la memoria principal compartida de datos
-						
+
 int memPInst[TAMA_MPInst];		//vector que representa la memoria principal compartida de instrucciones
-						
-std::vector< std::vector<int> > matrizHilillos(NUM_HILILLOS, std::vector<int>(37));		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento 
-								//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
-								
+
+std::vector< std::vector<int> > matrizHilillos(NUM_HILILLOS, std::vector<int>(37));		//representa los contextos de todos los hilillos y además la cantidad de ciclos de procesamiento
+//y su estado ("sin comenzar" = 0, "en espera" = 1, "corriendo" = 2,"terminado" = 3), y un identificador de hilillo
+
 time_t tiemposXHilillo[NUM_HILILLOS];		//el tiempo real que duro el hilillo en terminar, en un inicio tendra los tiempos en los que cada
-											//hilillo se comenzo a ejecutar
-								
+//hilillo se comenzo a ejecutar
+
 std::vector<int> colaHilillos(37);		//representa el proximo hilillo en espera de ser cargado a algun procesador
 
 time_t tiempoInicio;			//almacenará temporalmente el tiempo en que inicio cada hilillo
@@ -930,67 +930,67 @@ class Procesador
 		    pthread_mutex_unlock(&mutexTiemposXHilillo);
 		    tick();		//simula un ciclo de reloj
 		}
-	
 };
 //fin clase Procesador
 
 void* ejecutar(void* numProc)
 {
-	int numNucleo = *((int*)numProc);
-	vecProcs[numNucleo].correr();
+    int numNucleo = *((int*)numProc);
+    vecProcs[numNucleo].correr();
 }
 
 int inicio()
 {
     int rc;
+    int cantidadHilillosTerminados;
     pthread_barrier_init(&barrera1,NULL,NUM_THREADS);
     pthread_barrier_init(&barrera2,NULL,NUM_THREADS);
     int* argumento = ((int*)(calloc(1,sizeof(int))));
-    if ( argumento == NULL ) 
+    if ( argumento == NULL )
     {
         fprintf(stderr, "No se pudo reservar memoria.\n");
         exit(EXIT_FAILURE);
     }
     for(int i = 0; i < NUM_THREADS; ++i)
     {
-    	*argumento = i;
-		rc = pthread_create(&threads[i],NULL,ejecutar, argumento);
-		if(rc)
-		{
-	    	std::cout << "Error: imposible crear el hilo" <<std::endl;
-	    	exit(-1);
-		}
+        *argumento = i;
+        rc = pthread_create(&threads[i],NULL,ejecutar, argumento);
+        if(rc)
+        {
+            std::cout << "Error: imposible crear el hilo" <<std::endl;
+            exit(-1);
+        }
     }
     free(argumento);
     //pthread_barrier_wait(&barrera1);
     //pthread_barrier_wait(&barrera2);
-	//mientras todos los hilillos no terminaron de ejecutarse
-	while(!hilillosTerminaron)
-	{		
-		int cantidadHilillosTerminados = 0;
-		pthread_mutex_lock(&mutexMatrizHilillo);
-			for(int t = 0; t < NUM_HILILLOS; ++t)
-			{
-				if(3 == matrizHilillos[t][35])
-				{
-					++cantidadHilillosTerminados;
-				}
-			}
-			if(NUM_HILILLOS == cantidadHilillosTerminados)
-			{
-				hilillosTerminaron = true;
-			}
-		pthread_mutex_unlock(&mutexMatrizHilillo);
-	}
-	//si todos los hilillos terminaron su ejecución
-	if(hilillosTerminaron)
-	{
-		//matar hilos
-		for(int j = 0; j < NUM_THREADS; j++)
-		{
-		   	pthread_cancel(threads[j]);
-		}
-	}
+    //mientras todos los hilillos no terminaron de ejecutarse
+    while(!hilillosTerminaron)
+    {
+        cantidadHilillosTerminados = 0;
+        pthread_mutex_lock(&mutexMatrizHilillo);
+        for(int t = 0; t < NUM_HILILLOS; ++t)
+        {
+            if(3 == matrizHilillos[t][35])
+            {
+                ++cantidadHilillosTerminados;
+            }
+        }
+        if(NUM_HILILLOS == cantidadHilillosTerminados)
+        {
+            hilillosTerminaron = true;
+        }
+        pthread_mutex_unlock(&mutexMatrizHilillo);
+    }
+    //si todos los hilillos terminaron su ejecución
+    if(hilillosTerminaron)
+    {
+        //matar hilos
+        for(int j = 0; j < NUM_THREADS; j++)
+        {
+            pthread_cancel(threads[j]);
+        }
+    }
     pthread_barrier_destroy(&barrera1);
     pthread_barrier_destroy(&barrera2);
 }
@@ -998,187 +998,192 @@ int inicio()
 //carga hilillos de los archivos de texto a la matriz de contextos
 void cargarHilillos()
 {
-	int v1,v2,v3,v4;
-	int direccion;		//indica la proxima dirección en donde guardar una instrucción
-	int contadorInstrucciones = 0;	//indica la cantidad de instrucciones ingresadas en memoria actualmente
-	for(int i = 0; i < NUM_HILILLOS; ++i)
-	{
-		bool primerInstr = true;
-		int PC;
-		std::ifstream flujoEntrada1("0.txt", std::ios::in);
-		std::ifstream flujoEntrada2("1.txt", std::ios::in);
-		std::ifstream flujoEntrada3("2.txt", std::ios::in);
-		std::ifstream flujoEntrada4("3.txt", std::ios::in);
-		std::ifstream flujoEntrada5("4.txt", std::ios::in);
-		if(!flujoEntrada1 || !flujoEntrada2 || !flujoEntrada3 || !flujoEntrada4 || !flujoEntrada5)
-		{
-			std::cerr << "No se pudo abrir un archivo" << std::endl;
-			exit(1);
-		}
-		
-		if(i == 0)
-		{
-			while(flujoEntrada1 >> v1 >> v2 >> v3 >> v4)
-			{
-				PC = 384 + (4 * contadorInstrucciones);
-				if(primerInstr)
-				{
-					matrizHilillos[i][0] = 	PC;
-					matrizHilillos[i][35] = 0;
-					primerInstr = false;
-				}
-				memPInst[PC - 384] = v1;
-				memPInst[(PC + 1) - 384] = v2;
-				memPInst[(PC + 2) - 384] = v3;
-				memPInst[(PC + 3) - 384] = v4;
-				contadorInstrucciones++;
-			}
-			//poner primer hilo en espera
-			for(int j = 0; j < 37; ++j)
-			{
-				colaHilillos[j] = matrizHilillos[0][j];
-			}
-		}
-		else
-		{
-			if(i == 1)
-			{
-				while(flujoEntrada2 >> v1 >> v2 >> v3 >> v4)
-				{
-					PC = 384 + (4 * contadorInstrucciones);
-					if(primerInstr)
-					{
-						matrizHilillos[i][0] = 	PC;
-						matrizHilillos[i][35] = 0;
-						primerInstr = false;
-					}
-					memPInst[PC - 384] = v1;
-					memPInst[(PC + 1) - 384] = v2;
-					memPInst[(PC + 2) - 384] = v3;
-					memPInst[(PC + 3) - 384] = v4;
-					contadorInstrucciones++;
-				}
-			}
-			else
-			{
-				if(i == 2)
-				{
-					while(flujoEntrada3 >> v1 >> v2 >> v3 >> v4)
-					{
-						PC = 384 + (4 * contadorInstrucciones);
-						if(primerInstr)
-						{
-							matrizHilillos[i][0] = 	PC;
-							matrizHilillos[i][35] = 0;
-							primerInstr = false;
-						}
-						memPInst[PC - 384] = v1;
-						memPInst[(PC + 1) - 384] = v2;
-						memPInst[(PC + 2) - 384] = v3;
-						memPInst[(PC + 3) - 384] = v4;
-						contadorInstrucciones++;
-					}
-				}
-				else
-				{
-					if(i == 3)
-					{
-						while(flujoEntrada4 >> v1 >> v2 >> v3 >> v4)
-						{
-							PC = 384 + (4 * contadorInstrucciones);
-							if(primerInstr)
-							{
-								matrizHilillos[i][0] = 	PC;
-								matrizHilillos[i][35] = 0;
-								primerInstr = false;
-							}
-							memPInst[PC - 384] = v1;
-							memPInst[(PC + 1) - 384] = v2;
-							memPInst[(PC + 2) - 384] = v3;
-							memPInst[(PC + 3) - 384] = v4;
-							contadorInstrucciones++;
-						}
-					}
-					else
-					{
-						if(i == 4)
-						{
-							while(flujoEntrada5 >> v1 >> v2 >> v3 >> v4)
-							{
-								PC = 384 + (4 * contadorInstrucciones);
-								if(primerInstr)
-								{
-									matrizHilillos[i][0] = 	PC;
-									matrizHilillos[i][35] = 0;
-									primerInstr = false;
-								}
-								memPInst[PC - 384] = v1;
-								memPInst[(PC + 1) - 384] = v2;
-								memPInst[(PC + 2) - 384] = v3;
-								memPInst[(PC + 3) - 384] = v4;
-								contadorInstrucciones++;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+    int v1,v2,v3,v4;
+    int direccion;		//indica la proxima dirección en donde guardar una instrucción
+    int contadorInstrucciones = 0;	//indica la cantidad de instrucciones ingresadas en memoria actualmente
+    for(int i = 0; i < NUM_HILILLOS; ++i)
+    {
+        bool primerInstr = true;
+        int PC;
+        std::ifstream flujoEntrada1("0.txt", std::ios::in);
+        std::ifstream flujoEntrada2("1.txt", std::ios::in);
+        std::ifstream flujoEntrada3("2.txt", std::ios::in);
+        std::ifstream flujoEntrada4("3.txt", std::ios::in);
+        std::ifstream flujoEntrada5("4.txt", std::ios::in);
+        if(!flujoEntrada1 || !flujoEntrada2 || !flujoEntrada3 || !flujoEntrada4 || !flujoEntrada5)
+        {
+            std::cerr << "No se pudo abrir un archivo" << std::endl;
+            exit(1);
+        }
+
+        if(i == 0)
+        {
+            while(flujoEntrada1 >> v1 >> v2 >> v3 >> v4)
+            {
+                PC = 384 + (4 * contadorInstrucciones);
+                if(primerInstr)
+                {
+                    matrizHilillos[i][0] = 	PC;
+                    matrizHilillos[i][35] = 0;
+                    matrizHilillos[i][36] = i;
+                    primerInstr = false;
+                }
+                memPInst[PC - 384] = v1;
+                memPInst[(PC + 1) - 384] = v2;
+                memPInst[(PC + 2) - 384] = v3;
+                memPInst[(PC + 3) - 384] = v4;
+                contadorInstrucciones++;
+            }
+            //poner primer hilo en espera
+            for(int j = 0; j < 37; ++j)
+            {
+                colaHilillos[j] = matrizHilillos[i][j];
+            }
+        }
+        else
+        {
+            if(i == 1)
+            {
+                while(flujoEntrada2 >> v1 >> v2 >> v3 >> v4)
+                {
+                    PC = 384 + (4 * contadorInstrucciones);
+                    if(primerInstr)
+                    {
+                        matrizHilillos[i][0] = 	PC;
+                        matrizHilillos[i][35] = 0;
+                        matrizHilillos[i][36] = i;
+                        primerInstr = false;
+                    }
+                    memPInst[PC - 384] = v1;
+                    memPInst[(PC + 1) - 384] = v2;
+                    memPInst[(PC + 2) - 384] = v3;
+                    memPInst[(PC + 3) - 384] = v4;
+                    contadorInstrucciones++;
+                }
+            }
+            else
+            {
+                if(i == 2)
+                {
+                    while(flujoEntrada3 >> v1 >> v2 >> v3 >> v4)
+                    {
+                        PC = 384 + (4 * contadorInstrucciones);
+                        if(primerInstr)
+                        {
+                            matrizHilillos[i][0] = 	PC;
+                            matrizHilillos[i][35] = 0;
+                            matrizHilillos[i][36] = i;
+                            primerInstr = false;
+                        }
+                        memPInst[PC - 384] = v1;
+                        memPInst[(PC + 1) - 384] = v2;
+                        memPInst[(PC + 2) - 384] = v3;
+                        memPInst[(PC + 3) - 384] = v4;
+                        contadorInstrucciones++;
+                    }
+                }
+                else
+                {
+                    if(i == 3)
+                    {
+                        while(flujoEntrada4 >> v1 >> v2 >> v3 >> v4)
+                        {
+                            PC = 384 + (4 * contadorInstrucciones);
+                            if(primerInstr)
+                            {
+                                matrizHilillos[i][0] = 	PC;
+                                matrizHilillos[i][35] = 0;
+                                matrizHilillos[i][36] = i;
+                                primerInstr = false;
+                            }
+                            memPInst[PC - 384] = v1;
+                            memPInst[(PC + 1) - 384] = v2;
+                            memPInst[(PC + 2) - 384] = v3;
+                            memPInst[(PC + 3) - 384] = v4;
+                            contadorInstrucciones++;
+                        }
+                    }
+                    else
+                    {
+                        if(i == 4)
+                        {
+                            while(flujoEntrada5 >> v1 >> v2 >> v3 >> v4)
+                            {
+                                PC = 384 + (4 * contadorInstrucciones);
+                                if(primerInstr)
+                                {
+                                    matrizHilillos[i][0] = 	PC;
+                                    matrizHilillos[i][35] = 0;
+                                    matrizHilillos[i][36] = i;
+                                    primerInstr = false;
+                                }
+                                memPInst[PC - 384] = v1;
+                                memPInst[(PC + 1) - 384] = v2;
+                                memPInst[(PC + 2) - 384] = v3;
+                                memPInst[(PC + 3) - 384] = v4;
+                                contadorInstrucciones++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void imprimirMPInstr()
 {
-	std::cout << "Memoria principal de Instrucciones:" <<std::endl;
-	for(int z = 0; z < TAMA_MPInst; z += 4)
-	{
-		std::cout << memPInst[z] << "\t" << memPInst[z + 1] << "\t" << memPInst[z + 2] << "\t" << memPInst[z + 3] << "\t" << std::endl;
-	}
+    std::cout << "Memoria principal de Instrucciones:" <<std::endl;
+    for(int z = 0; z < TAMA_MPInst; z += 4)
+    {
+        std::cout << memPInst[z] << "\t" << memPInst[z + 1] << "\t" << memPInst[z + 2] << "\t" << memPInst[z + 3] << "\t" << std::endl;
+    }
 }
 
 void imprimirMPDat()
 {
-	std::cout << "Memoria principal de Datos:" <<std::endl;
-	for(int z = 0; z < TAM_MPDat; z += 4)
-	{
-		std::cout << memPDatos[z] << "\t" << memPDatos[z + 1] << "\t" << memPDatos[z + 2] << "\t" << memPDatos[z + 3] << "\t" << std::endl;
-	}
+    std::cout << "Memoria principal de Datos:" <<std::endl;
+    for(int z = 0; z < TAM_MPDat; z += 4)
+    {
+        std::cout << memPDatos[z] << "\t" << memPDatos[z + 1] << "\t" << memPDatos[z + 2] << "\t" << memPDatos[z + 3] << "\t" << std::endl;
+    }
 }
 
 void imprimirMatrizHilillos()
 {
-	std::cout << "Matriz de Hilillos:" <<std::endl;
-	for(int x = 0; x < NUM_HILILLOS; ++x)
-	{
-		for(int y = 0; y < 37; ++y)
-		{
-			std::cout << matrizHilillos[x][y] << "  ";
-		}
-	}
-	std::cout <<std::endl;
+    std::cout << "Matriz de Hilillos:" <<std::endl;
+    for(int x = 0; x < NUM_HILILLOS; ++x)
+    {
+        for(int y = 0; y < 37; ++y)
+        {
+            std::cout << matrizHilillos[x][y] << "  ";
+        }
+    }
+    std::cout <<std::endl;
 }
 
 void imprimirCola()
 {
-	std::cout << "Cola de Instrucciones:" <<std::endl;
-	for(int y = 0; y < 37; ++y)
-	{
-		std::cout << colaHilillos[y] << "\t";
-	}
-	std::cout <<std::endl;
+    std::cout << "Cola de Instrucciones:" <<std::endl;
+    for(int y = 0; y < 37; ++y)
+    {
+        std::cout << colaHilillos[y] << "\t";
+    }
+    std::cout <<std::endl;
 }
 
 int main()
 {
-	cargarHilillos();
-	vecProcs.push_back(Procesador(0));
-	vecProcs.push_back(Procesador(1));
-	vecProcs.push_back(Procesador(2));
-	inicio();
-	/*
-	imprimirMPDat();
-	imprimirMPInstr();
-	imprimirMatrizHilillos();
-	imprimirCola();
-	*/
+    cargarHilillos();
+    vecProcs.push_back(Procesador(0));
+    vecProcs.push_back(Procesador(1));
+    vecProcs.push_back(Procesador(2));
+    inicio();
+    /*
+    imprimirMPDat();
+    imprimirMPInstr();
+    imprimirMatrizHilillos();
+    imprimirCola();
+    */
 }
 
