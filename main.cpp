@@ -893,9 +893,11 @@ class Procesador
 		*/
 		void JAL(int n) 
 		{
-		    regsPC[0] += 4;
-		    regsPC[31 + 1] = regsPC[0];
-		    regsPC[0] += n;
+			pthread_mutex_lock(&mutexRegsPC);
+			    regsPC[0] += 4;
+			    regsPC[31 + 1] = regsPC[0];
+			    regsPC[0] += n;
+		    pthread_mutex_unlock(&mutexRegsPC);
 		    ciclosUsados++;
 		    quantum--;
 		    tick();		//simula un ciclo de reloj
@@ -908,7 +910,9 @@ class Procesador
 		{
 		    if(esRegistroValido(RX))
 		    {
-		        regsPC[0] = regsPC[RX + 1];
+		    	pthread_mutex_lock(&mutexRegsPC);
+		        	regsPC[0] = regsPC[RX + 1];
+		        pthread_mutex_unlock(&mutexRegsPC);
 		        ciclosUsados++;
 		        quantum--;
 		        tick();		//simula un ciclo de reloj
@@ -920,7 +924,9 @@ class Procesador
 		*/
 		void FIN() 
 		{
-		    regsPC[0] += 4;
+			pthread_mutex_lock(&mutexRegsPC);
+		    	regsPC[0] += 4;
+		    pthread_mutex_unlock(&mutexRegsPC);
 		    estadoHilillo = 3;
 		    ciclosUsados++;
 		    quantum--;
