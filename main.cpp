@@ -394,6 +394,9 @@ class Procesador
 			//el hilo correra hasta que no hayan mas hilillos en espera
 			while(hilillosEnEspera != -1)
 			{
+				pthread_mutex_lock(&mutexCola);
+				    idHilillo = colaHilillos[36];
+				pthread_mutex_unlock(&mutexCola);
 				proximoHilo = false;
 				//si el proximo hilillo a ejecutar aún no comienza su ejecución o esta en espera
 				if(estadoDeProximoHilillo == 0 || estadoDeProximoHilillo == 1)
